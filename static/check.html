@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Solvulator · System Check</title>
+<style>
+:root{--bg:#07070a;--s1:#0c0c12;--s2:#12121c;--border:#22222e;
+  --gold:#c9a84c;--red:#e05252;--green:#3db87a;--blue:#4a8fe8;
+  --text:#d4cfc7;--dim:#6a6460;--mono:'SF Mono','Menlo','Courier New',monospace;
+  --sans:system-ui,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);padding:20px;max-width:640px;margin:0 auto}
+h1{font-size:16px;color:var(--gold);font-family:var(--mono);margin-bottom:16px;letter-spacing:2px}
+.card{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px}
+.card-title{font-size:11px;color:var(--dim);font-family:var(--mono);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
+.row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:13px}
+.row .k{color:var(--dim);font-family:var(--mono);font-size:11px}
+.row .v{font-family:var(--mono);font-size:12px}
+.ok{color:var(--green)}.fail{color:var(--red)}.warn{color:var(--gold)}.dim{color:var(--dim)}
+button{font-family:var(--mono);font-size:12px;padding:8px 16px;background:var(--s2);
+  border:1px solid var(--border);border-radius:6px;color:var(--gold);cursor:pointer;min-height:40px}
+button:active{background:var(--gold);color:var(--bg)}
+.test-result{margin-top:8px;padding:10px;background:var(--bg);border-radius:6px;
+  font-family:var(--mono);font-size:11px;white-space:pre-wrap;max-height:300px;overflow-y:auto;
+  color:var(--text);line-height:1.5;display:none}
+.latency{font-size:10px;color:var(--dim)}
+a{color:var(--gold);text-decoration:none}
+a:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+<h1>SYSTEM CHECK</h1>
+<div style="margin-bottom:16px;font-size:12px;color:var(--dim)">
+  <a href="/">← Storyboard</a> · <a href="/index.html">v0.4 UI</a> · <a href="/manifest">Manifest</a>
+</div>
+
+<div class="card" id="health-card">
+  <div class="card-title">Backend Health</div>
+  <div id="health-rows">Loading...</div>
+</div>
+
+<div class="card" id="keys-card">
+  <div class="card-title">API Keys</div>
+  <div id="keys-rows">Loading...</div>
+</div>
+
+<div class="card" id="sheet-card">
+  <div class="card-title">Google Sheet</div>
+  <div id="sheet-rows">Loading...</div>
+</div>
+
+<div class="card" id="docs-card">
+  <div class="card-title">Documents</div>
+  <div id="docs-rows">Loading...</div>
+</div>
+
+<div class="card">
+  <div class="card-title">LLM Test</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button onclick="testLLM('gemini')">Test Gemini</button>
+    <button onclick="testLLM('claude')">Test Claude/OpenRouter</button>
+    <button onclick="testLLM('lathe')">Test LATHE</button>
+  </div>
+  <div class="test-result" id="llm-result"></div>
+</div>
+
+<div class="card">
+  <div class="card-title">Pipeline Test</div>
+  <button onclick="testPipeline()">Run Agent 01 (Intake) on Sample</button>
+  <div class="test-result" id="pipeline-result"></div>
+</div>
+
+<div class="card" id="endpoints-card">
+  <div class="card-title">Endpoint Status</div>
+  <div id="endpoint-rows">Loading...</div>
+</div>
+
+<script>
+const API = '';
+
+async function jfetch(url, opts) {
+  const t0 = performance.now();
+  try {
+    const r = await fetch(API + url, opts);
+    const ms = Math.round(performance.now() - t0);
+    const data = await r.json();
+    return {ok: r.ok, status: r.status, data, ms};
+  } catch(e) {
+    return {ok: false, status: 0, data: {error: e.message}, ms: Math.round(performance.now() - t0)};
+  }
+}
+
+function row(k, v, cls='') {
+  return `<div class="row"><span class="k">${k}</span><span class="v ${cls}">${v}</span></div>`;
+}
+
+async function runChecks() {
+  // Health
+  const h = await jfetch('/health');
+  const hd = h.data;
+  document.getElementById('health-rows').innerHTML = h.ok ? [
+    row('status', 'OK', 'ok'),
+    row('version', hd.version || '?'),
+    row('pilot_mode', hd.pilot_mode),
+    row('sheet', hd.sheet_state || '?', hd.sheet_state==='ready'?'ok':'warn'),
+    row('latency', h.ms + 'ms', 'latency'),
+  ].join('') : row('status', 'UNREACHABLE', 'fail');
+
+  // Keys
+  if(h.ok) {
+    document.getElementById('keys-rows').innerHTML = [
+      row('anthropic', hd.anthropic ? 'SET' : 'not set', hd.anthropic ? 'ok' : 'dim'),
+      row('gemini', hd.gemini ? 'SET' : 'not set', hd.gemini ? 'ok' : 'dim'),
+      row('openrouter', hd.openrouter ? 'SET' : 'not set', hd.openrouter ? 'ok' : 'dim'),
+      row('any_key', hd.api_key_set ? 'YES' : 'NO', hd.api_key_set ? 'ok' : 'fail'),
+    ].join('');
+  }
+
+  // Sheet
+  const s = await jfetch('/sheet/state');
+  const sd = s.data;
+  document.getElementById('sheet-rows').innerHTML = s.ok ? [
+    row('state', sd.state, sd.state==='ready'?'ok':sd.state==='error'?'fail':'warn'),
+    sd.total ? row('rows', `${sd.valid} valid / ${sd.invalid} invalid / ${sd.total} total`) : '',
+    sd.error ? row('error', sd.error, 'fail') : '',
+    sd.columns ? row('columns', sd.columns.join(', '), 'dim') : '',
+  ].join('') : row('state', 'unreachable', 'fail');
+
+  // Documents
+  const d = await jfetch('/doc/list');
+  if(d.ok && d.data.documents) {
+    const docs = d.data.documents;
+    document.getElementById('docs-rows').innerHTML = [
+      row('count', docs.length, docs.length > 0 ? 'ok' : 'dim'),
+      ...docs.map(doc => row(doc.filename, `${(doc.size/1024).toFixed(1)}KB · ${doc.sv_id||'—'}`, 'dim'))
+    ].join('');
+  }
+
+  // Endpoints
+  const endpoints = [
+    '/health', '/manifest', '/catalog', '/sheet/state',
+    '/doc/list', '/pipeline/runs'
+  ];
+  const results = await Promise.all(endpoints.map(async ep => {
+    const r = await jfetch(ep);
+    return {ep, ok: r.ok, ms: r.ms, status: r.status};
+  }));
+  document.getElementById('endpoint-rows').innerHTML = results.map(r =>
+    row(r.ep, `${r.status} · ${r.ms}ms`, r.ok ? 'ok' : 'fail')
+  ).join('');
+}
+
+async function testLLM(type) {
+  const out = document.getElementById('llm-result');
+  out.style.display = 'block';
+  out.textContent = `Testing ${type}...`;
+
+  let url, body;
+  if(type === 'gemini') {
+    url = '/agent/gemini';
+    body = {prompt: 'שלום. Reply with exactly: {"status":"ok","provider":"gemini","lang":"he"}', max_tokens: 100};
+  } else if(type === 'claude') {
+    url = '/agent/claude';
+    body = {prompt: 'Reply with exactly: {"status":"ok","provider":"claude","lang":"en"}', max_tokens: 100};
+  } else {
+    url = '/agent/lathe';
+    body = {doc_text: 'בית המשפט קבע כי העותר לא הוכיח את טענתו לאי-מידתיות.', goal: 'test', lang: 'Hebrew'};
+  }
+
+  const r = await jfetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  const cls = r.ok && !r.data.error ? 'ok' : 'fail';
+  out.innerHTML = `<span class="${cls}">${r.ok ? 'SUCCESS' : 'FAILED'}</span> · ${r.ms}ms\n\n` +
+    JSON.stringify(r.data, null, 2);
+}
+
+async function testPipeline() {
+  const out = document.getElementById('pipeline-result');
+  out.style.display = 'block';
+  out.textContent = 'Starting pipeline run...';
+
+  const start = await jfetch('/pipeline/start', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({doc_text: 'בית משפט השלום בחיפה. תיק 12345. החלטה: על המבקש להגיש תצהיר תוך 14 יום. אי הגשה = מחיקה. שופט: כב\' השופט ישראלי.'})
+  });
+
+  if(!start.ok || start.data.error) {
+    out.innerHTML = `<span class="fail">START FAILED</span>\n${JSON.stringify(start.data, null, 2)}`;
+    return;
+  }
+
+  out.textContent += `\nRun ID: ${start.data.run_id}\nRunning Agent 01 (Intake)...`;
+
+  const step = await jfetch(`/pipeline/${start.data.run_id}/step`, {method: 'POST'});
+  const cls = step.ok && !step.data.error ? 'ok' : 'fail';
+  out.innerHTML = `<span class="${cls}">${step.ok ? 'PIPELINE OK' : 'PIPELINE FAILED'}</span> · ${step.ms}ms\n\n` +
+    `Run: ${start.data.run_id}\nAgent: ${step.data.agent_name || '?'}\nHas KB: ${start.data.has_knowledge_base}\n\n` +
+    JSON.stringify(step.data.result || step.data, null, 2);
+}
+
+runChecks();
+</script>
+</body>
+</html>

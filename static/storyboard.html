@@ -236,11 +236,124 @@ button{cursor:pointer;font-family:var(--mono);background:none;border:none;color:
 .settings-status.disconnected{background:rgba(224,82,82,0.12);color:var(--red)}
 .settings-divider{height:1px;background:var(--border);margin:16px 0}
 
+/* ═══ FAB (Floating Action Button) ═══ */
+#doc-fab{position:fixed;bottom:calc(70px + var(--safe-b));right:16px;z-index:150;
+  width:52px;height:52px;border-radius:50%;background:var(--gold);color:var(--bg);
+  display:flex;align-items:center;justify-content:center;font-size:26px;
+  box-shadow:0 4px 16px rgba(201,168,76,0.4);cursor:pointer;
+  transition:transform .25s cubic-bezier(.32,.72,0,1),box-shadow .25s;
+  -webkit-tap-highlight-color:transparent;min-height:52px}
+#doc-fab:active{transform:scale(0.9)}
+#doc-fab.open{transform:rotate(45deg)}
+
+/* ═══ DOCUMENT INTAKE ACTION SHEET ═══ */
+#intake-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:200;
+  opacity:0;pointer-events:none;transition:opacity .25s ease}
+#intake-overlay.open{opacity:1;pointer-events:auto}
+#intake-sheet{position:fixed;bottom:0;left:0;right:0;z-index:201;
+  background:var(--s1);border-top:1px solid var(--border);border-radius:16px 16px 0 0;
+  padding:12px 16px calc(16px + var(--safe-b));
+  transform:translateY(100%);transition:transform .35s cubic-bezier(.32,.72,0,1)}
+#intake-sheet.open{transform:translateY(0)}
+.intake-handle{width:36px;height:4px;background:var(--border-hi);border-radius:2px;margin:0 auto 12px}
+.intake-title{font-family:var(--mono);font-size:10px;color:var(--gold);
+  letter-spacing:2px;text-transform:uppercase;margin-bottom:10px}
+.intake-option{display:flex;align-items:center;gap:12px;padding:14px 12px;
+  border-radius:10px;background:var(--s2);margin-bottom:6px;cursor:pointer;
+  transition:background .15s;min-height:52px;border:1px solid var(--border)}
+.intake-option:active{background:var(--s3)}
+.intake-option .io-icon{font-size:22px;min-width:32px;text-align:center}
+.intake-option .io-label{font-size:13px;color:var(--text)}
+.intake-option .io-sub{font-size:10px;color:var(--dim);margin-top:1px}
+.intake-cancel{width:100%;padding:14px;border-radius:10px;background:var(--bg);
+  border:1px solid var(--border);font-size:13px;color:var(--mid);margin-top:4px;
+  text-align:center;cursor:pointer;min-height:48px}
+.intake-cancel:active{background:var(--s1)}
+
+/* ═══ INTAKE SUB-PANELS ═══ */
+.intake-sub{display:none;padding:8px 0}
+.intake-sub.active{display:block}
+.intake-sub input[type="text"],.intake-sub textarea{width:100%;padding:12px;
+  background:var(--bg);border:1px solid var(--border);border-radius:8px;
+  color:var(--text);font-family:var(--mono);font-size:12px;outline:none;resize:vertical}
+.intake-sub input[type="text"]:focus,.intake-sub textarea:focus{border-color:var(--gold)}
+.intake-sub textarea{min-height:120px}
+.intake-submit{width:100%;padding:12px;border-radius:8px;background:var(--gold);
+  color:var(--bg);font-family:var(--mono);font-size:12px;letter-spacing:1px;
+  margin-top:8px;cursor:pointer;min-height:44px;border:none}
+.intake-submit:active{opacity:0.8}
+.intake-progress{height:3px;background:var(--s3);border-radius:2px;margin-top:8px;overflow:hidden;display:none}
+.intake-progress.active{display:block}
+.intake-progress-bar{height:100%;background:var(--gold);border-radius:2px;
+  width:0%;transition:width .3s ease}
+
+/* ═══ DRAG & DROP OVERLAY ═══ */
+#drop-overlay{position:fixed;inset:0;z-index:500;background:rgba(7,7,10,0.92);
+  display:none;align-items:center;justify-content:center;flex-direction:column}
+#drop-overlay.active{display:flex}
+#drop-overlay .drop-icon{font-size:64px;margin-bottom:16px;opacity:0.6}
+#drop-overlay .drop-text{font-size:16px;color:var(--gold);font-family:var(--mono);
+  letter-spacing:2px}
+#drop-overlay .drop-border{position:absolute;inset:24px;border:2px dashed var(--gold);
+  border-radius:16px;opacity:0.4;pointer-events:none}
+
+/* ═══ DOCUMENT VIEWER ═══ */
+.doc-viewer{background:var(--s1);border:1px solid var(--border);border-radius:10px;
+  margin:10px 0;overflow:hidden}
+.doc-viewer-header{display:flex;align-items:center;justify-content:space-between;
+  padding:10px 12px;border-bottom:1px solid var(--border)}
+.doc-viewer-header .dvh-name{font-size:12px;color:var(--text);font-family:var(--mono);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.doc-viewer-actions{display:flex;gap:6px}
+.doc-viewer-actions button{padding:6px 10px;border-radius:6px;font-size:10px;
+  font-family:var(--mono);border:1px solid var(--border);background:var(--s2);
+  color:var(--text);min-height:32px;cursor:pointer}
+.doc-viewer-actions button:active{background:var(--s3)}
+.doc-viewer-actions button.analyze-btn{border-color:var(--gold);color:var(--gold)}
+.doc-viewer-body{max-height:400px;overflow:auto}
+.doc-viewer-body iframe,.doc-viewer-body object{width:100%;height:360px;border:none}
+.doc-viewer-body img{width:100%;height:auto;display:block}
+.doc-viewer-body pre{padding:12px;font-size:12px;color:var(--text);line-height:1.6;
+  white-space:pre-wrap;font-family:var(--mono);direction:rtl}
+
+/* ═══ DOCUMENT LIST (L4) ═══ */
+.doc-list{display:flex;flex-direction:column;gap:6px;margin:10px 0}
+.doc-list-item{display:flex;align-items:center;gap:10px;padding:10px 12px;
+  background:var(--s1);border:1px solid var(--border);border-radius:8px;
+  cursor:pointer;transition:all .15s;min-height:52px}
+.doc-list-item:active{border-color:var(--gold);transform:scale(0.98)}
+.doc-list-icon{width:36px;height:36px;border-radius:6px;background:var(--s2);
+  display:flex;align-items:center;justify-content:center;font-size:16px;
+  flex-shrink:0}
+.doc-list-icon.pdf{color:var(--red)}
+.doc-list-icon.image{color:var(--blue)}
+.doc-list-icon.text{color:var(--mid)}
+.doc-list-info{flex:1;overflow:hidden}
+.doc-list-info .dli-name{font-size:12px;color:var(--text);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.doc-list-info .dli-meta{font-size:10px;color:var(--dim);font-family:var(--mono);margin-top:2px}
+.doc-list-analyze{padding:6px 10px;border-radius:6px;font-size:9px;
+  font-family:var(--mono);border:1px solid var(--gold);color:var(--gold);
+  background:transparent;min-height:32px;cursor:pointer}
+.doc-list-analyze:active{background:rgba(201,168,76,0.15)}
+
+/* ═══ DOCUMENT BADGES ═══ */
+.doc-badge{display:inline-flex;align-items:center;justify-content:center;
+  min-width:16px;height:16px;border-radius:8px;background:var(--gold);
+  color:var(--bg);font-size:9px;font-family:var(--mono);font-weight:700;
+  padding:0 4px;margin-left:6px;vertical-align:middle}
+
+/* ═══ GOOGLE DRIVE PICKER OPTION ═══ */
+.intake-option.drive{border-color:rgba(74,143,232,0.3)}
+.intake-option.drive .io-icon{color:var(--blue)}
+
 /* ═══ ANIMATIONS ═══ */
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .fade-in{animation:fadeIn .25s ease}
 @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
 .slide-up{animation:slideUp .3s ease}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+.pulse{animation:pulse 1.5s ease infinite}
 
 /* ═══ RESPONSIVE ═══ */
 @media(min-width:768px){
@@ -260,6 +373,88 @@ button{cursor:pointer;font-family:var(--mono);background:none;border:none;color:
 <div id="canvas"></div>
 
 <div class="share-toast" id="share-toast">Document received</div>
+
+<!-- DOCUMENT FAB -->
+<button id="doc-fab" onclick="toggleIntake()">+</button>
+
+<!-- DRAG & DROP OVERLAY -->
+<div id="drop-overlay">
+  <div class="drop-border"></div>
+  <div class="drop-icon">&#x1F4C4;</div>
+  <div class="drop-text">Drop document here</div>
+</div>
+
+<!-- INTAKE ACTION SHEET -->
+<div id="intake-overlay" onclick="closeIntake()"></div>
+<div id="intake-sheet">
+  <div class="intake-handle"></div>
+  <div class="intake-title">Add Document</div>
+
+  <!-- Main options list -->
+  <div id="intake-options">
+    <div class="intake-option" onclick="showIntakeSub('upload')">
+      <div class="io-icon">&#x1F4CE;</div>
+      <div><div class="io-label">Upload File</div><div class="io-sub">PDF, image, Word, text</div></div>
+    </div>
+    <div class="intake-option" onclick="showIntakeSub('link')">
+      <div class="io-icon">&#x1F517;</div>
+      <div><div class="io-label">Paste Link</div><div class="io-sub">Google Drive, direct URL</div></div>
+    </div>
+    <div class="intake-option" onclick="showIntakeSub('camera')">
+      <div class="io-icon">&#x1F4F7;</div>
+      <div><div class="io-label">Camera</div><div class="io-sub">Photograph a document</div></div>
+    </div>
+    <div class="intake-option" onclick="showIntakeSub('paste')">
+      <div class="io-icon">&#x1F4DD;</div>
+      <div><div class="io-label">Paste Text</div><div class="io-sub">Copy-paste document content</div></div>
+    </div>
+    <div class="intake-option drive" id="drive-option" style="display:none" onclick="openDrivePicker()">
+      <div class="io-icon">&#x2601;</div>
+      <div><div class="io-label">Browse Drive</div><div class="io-sub">Select from Google Drive</div></div>
+    </div>
+    <div class="intake-cancel" onclick="closeIntake()">Cancel</div>
+  </div>
+
+  <!-- Sub-panels -->
+  <div class="intake-sub" id="sub-upload">
+    <input type="file" id="file-input" accept=".pdf,.jpg,.jpeg,.png,.heic,.txt,.doc,.docx" style="display:none" onchange="handleFileSelect(this)"/>
+    <div class="intake-option" onclick="document.getElementById('file-input').click()">
+      <div class="io-icon">&#x1F4C1;</div>
+      <div><div class="io-label">Choose File</div><div class="io-sub">Browse device storage</div></div>
+    </div>
+    <div class="intake-progress" id="upload-progress"><div class="intake-progress-bar" id="upload-progress-bar"></div></div>
+    <div id="upload-status" style="font-size:11px;color:var(--dim);font-family:var(--mono);padding:6px 0"></div>
+    <div class="intake-cancel" onclick="backToIntakeOptions()">Back</div>
+  </div>
+
+  <div class="intake-sub" id="sub-camera">
+    <input type="file" id="camera-input" accept="image/*" capture="environment" style="display:none" onchange="handleFileSelect(this)"/>
+    <div class="intake-option" onclick="document.getElementById('camera-input').click()">
+      <div class="io-icon">&#x1F4F7;</div>
+      <div><div class="io-label">Take Photo</div><div class="io-sub">Open camera</div></div>
+    </div>
+    <div class="intake-progress" id="camera-progress"><div class="intake-progress-bar" id="camera-progress-bar"></div></div>
+    <div id="camera-status" style="font-size:11px;color:var(--dim);font-family:var(--mono);padding:6px 0"></div>
+    <div class="intake-cancel" onclick="backToIntakeOptions()">Back</div>
+  </div>
+
+  <div class="intake-sub" id="sub-link">
+    <input type="text" id="link-input" placeholder="https://drive.google.com/... or direct PDF link"/>
+    <button class="intake-submit" onclick="submitLink()">Fetch Document</button>
+    <div class="intake-progress" id="link-progress"><div class="intake-progress-bar" id="link-progress-bar"></div></div>
+    <div id="link-status" style="font-size:11px;color:var(--dim);font-family:var(--mono);padding:6px 0"></div>
+    <div class="intake-cancel" onclick="backToIntakeOptions()">Back</div>
+  </div>
+
+  <div class="intake-sub" id="sub-paste">
+    <textarea id="paste-input" placeholder="Paste document text here..."></textarea>
+    <input type="text" id="paste-name" placeholder="Document name (optional)" style="margin-top:6px"/>
+    <button class="intake-submit" onclick="submitPaste()">Save Document</button>
+    <div class="intake-progress" id="paste-progress"><div class="intake-progress-bar" id="paste-progress-bar"></div></div>
+    <div id="paste-status" style="font-size:11px;color:var(--dim);font-family:var(--mono);padding:6px 0"></div>
+    <div class="intake-cancel" onclick="backToIntakeOptions()">Back</div>
+  </div>
+</div>
 
 <div id="settings-overlay" onclick="closeSettings()"></div>
 <div id="settings-panel">
@@ -470,7 +665,7 @@ function renderL0(c) {
     return `<div class="thread" onclick="selectCase('${cs.sv_id}')" style="background:var(--s1)">
       <div class="urgency-pip ${cs.urgency}"></div>
       ${bars.join('')}
-      <span class="thread-label">${cs.sv_id} · ${cs.source} · ${cs.status}</span>
+      <span class="thread-label">${cs.sv_id} · ${cs.source} · ${cs.status}${docBadgeHtml(cs.sv_id)}</span>
     </div>`;
   }).join('') + '</div>';
 }
@@ -485,8 +680,9 @@ function renderL1(c) {
     <div style="padding:8px 0 12px">
       <div style="font-size:15px;color:var(--text)">${cs.case_number}</div>
       <div style="font-size:11px;color:var(--mid);margin-top:2px">${cs.summary_he}</div>
-      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center">
         ${(cs.stakes||[]).map(s=>`<span class="stake-tag ${s}">${s}</span>`).join('')}
+        ${docBadgeHtml(cs.sv_id)}
       </div>
     </div>
     <div class="L1" style="position:relative">
@@ -620,6 +816,17 @@ function renderL3(c) {
         `).join('')}
       </div>
     </div>` : ''}
+
+    ${(() => {
+      const caseDocs = getDocsForCase(cs.sv_id);
+      if (!caseDocs.length) return '';
+      return `<div class="context-section">
+        <div class="context-header open" onclick="toggleSection(this)">DOCUMENTS · מסמכים (${caseDocs.length})</div>
+        <div class="context-body open">
+          ${caseDocs.map(d => renderDocViewer(d)).join('')}
+        </div>
+      </div>`;
+    })()}
   </div>`;
 }
 
@@ -673,12 +880,21 @@ function renderL4(c) {
       </div>
     </div>
 
+    <div style="margin-bottom:12px">
+      <div style="font-size:10px;color:var(--gold);font-family:var(--mono);margin-bottom:6px;letter-spacing:1px">
+        DOCUMENTS · מסמכים (${getDocsForCase(cs.sv_id).length})
+      </div>
+      <div id="doc-list-container">
+        ${renderDocList(getDocsForCase(cs.sv_id))}
+      </div>
+    </div>
+
     <div class="doc-full-text" id="doc-text">
       ${cs.summary_he}
 
 ${(cs.events||[]).map(e => `[${e.date}] ${e.title}\n${e.sub}`).join('\n\n')}
 
-${(cs.deadlines||[]).map(d => `⚠ ${d.action} — ${d.date} (${d.consequence})`).join('\n')}
+${(cs.deadlines||[]).map(d => `\u26A0 ${d.action} \u2014 ${d.date} (${d.consequence})`).join('\n')}
     </div>
 
     <div id="gemini-output" style="margin-top:12px"></div>
@@ -960,6 +1176,476 @@ async function loadFromGoogleSheets() {
 }
 
 // ═══════════════════════════════════════════════
+// DOCUMENT MANAGEMENT
+// ═══════════════════════════════════════════════
+
+// Document store: { id, name, type, size, date, case_id, mime, url }
+state.documents = JSON.parse(localStorage.getItem('sv-docs') || '[]');
+
+function saveDocState() {
+  localStorage.setItem('sv-docs', JSON.stringify(state.documents));
+}
+
+function getDocsForCase(svId) {
+  return state.documents.filter(d => d.case_id === svId || !d.case_id);
+}
+
+function docTypeIcon(mime, name) {
+  if (!mime && name) {
+    const ext = name.split('.').pop().toLowerCase();
+    if (ext === 'pdf') return { icon: '\u{1F4D1}', cls: 'pdf' };
+    if (['jpg','jpeg','png','heic','gif','webp'].includes(ext)) return { icon: '\u{1F5BC}', cls: 'image' };
+    return { icon: '\u{1F4C4}', cls: 'text' };
+  }
+  if (mime && mime.startsWith('image/')) return { icon: '\u{1F5BC}', cls: 'image' };
+  if (mime && mime.includes('pdf')) return { icon: '\u{1F4D1}', cls: 'pdf' };
+  return { icon: '\u{1F4C4}', cls: 'text' };
+}
+
+function formatFileSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+// ─── INTAKE PANEL ───
+function toggleIntake() {
+  const sheet = document.getElementById('intake-sheet');
+  const overlay = document.getElementById('intake-overlay');
+  const fab = document.getElementById('doc-fab');
+  const isOpen = sheet.classList.contains('open');
+  if (isOpen) { closeIntake(); } else {
+    // Check if Drive option should show
+    const driveOpt = document.getElementById('drive-option');
+    driveOpt.style.display = localStorage.getItem('sv-gtoken') ? 'flex' : 'none';
+    // Reset to main options
+    backToIntakeOptions();
+    overlay.classList.add('open');
+    sheet.classList.add('open');
+    fab.classList.add('open');
+  }
+}
+
+function closeIntake() {
+  document.getElementById('intake-overlay').classList.remove('open');
+  document.getElementById('intake-sheet').classList.remove('open');
+  document.getElementById('doc-fab').classList.remove('open');
+}
+
+function showIntakeSub(which) {
+  document.getElementById('intake-options').style.display = 'none';
+  document.querySelectorAll('.intake-sub').forEach(el => el.classList.remove('active'));
+  const sub = document.getElementById('sub-' + which);
+  if (sub) sub.classList.add('active');
+}
+
+function backToIntakeOptions() {
+  document.getElementById('intake-options').style.display = 'block';
+  document.querySelectorAll('.intake-sub').forEach(el => el.classList.remove('active'));
+}
+
+// ─── FILE UPLOAD ───
+async function handleFileSelect(input) {
+  const file = input.files[0];
+  if (!file) return;
+  await uploadFile(file);
+  input.value = '';
+}
+
+async function uploadFile(file) {
+  const progressId = file.name.includes('camera') ? 'camera' : 'upload';
+  const bar = document.getElementById(progressId + '-progress-bar');
+  const progress = document.getElementById(progressId + '-progress');
+  const status = document.getElementById(progressId + '-status');
+  progress.classList.add('active');
+  bar.style.width = '10%';
+  status.textContent = 'Uploading ' + file.name + '...';
+
+  const formData = new FormData();
+  formData.append('file', file);
+  if (state.selectedCase) formData.append('case_id', state.selectedCase.sv_id);
+
+  try {
+    bar.style.width = '40%';
+    const resp = await fetch(API + '/doc/upload', { method: 'POST', body: formData });
+    bar.style.width = '80%';
+    const data = await resp.json();
+    bar.style.width = '100%';
+
+    const doc = {
+      id: data.id || ('doc-' + Date.now()),
+      name: file.name,
+      type: file.type || 'application/octet-stream',
+      size: file.size,
+      date: new Date().toISOString(),
+      case_id: state.selectedCase?.sv_id || null,
+      mime: file.type
+    };
+    state.documents.push(doc);
+    saveDocState();
+
+    status.textContent = 'Uploaded: ' + file.name;
+    status.style.color = 'var(--green)';
+    showToast('Document uploaded: ' + file.name);
+    setTimeout(() => { closeIntake(); render(); }, 800);
+  } catch (e) {
+    bar.style.width = '100%';
+    bar.style.background = 'var(--red)';
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = 'var(--red)';
+
+    // Save locally even if backend is unavailable
+    const doc = {
+      id: 'doc-' + Date.now(),
+      name: file.name,
+      type: file.type || 'application/octet-stream',
+      size: file.size,
+      date: new Date().toISOString(),
+      case_id: state.selectedCase?.sv_id || null,
+      mime: file.type,
+      local: true
+    };
+    state.documents.push(doc);
+    saveDocState();
+    status.textContent = 'Saved locally: ' + file.name;
+    status.style.color = 'var(--orange)';
+    setTimeout(() => { closeIntake(); render(); }, 800);
+  }
+}
+
+// ─── LINK SUBMISSION ───
+async function submitLink() {
+  const url = document.getElementById('link-input').value.trim();
+  if (!url) return;
+  const bar = document.getElementById('link-progress-bar');
+  const progress = document.getElementById('link-progress');
+  const status = document.getElementById('link-status');
+  progress.classList.add('active');
+  bar.style.width = '20%';
+  status.textContent = 'Fetching...';
+
+  try {
+    bar.style.width = '50%';
+    const resp = await fetch(API + '/doc/from-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, case_id: state.selectedCase?.sv_id || null })
+    });
+    bar.style.width = '80%';
+    const data = await resp.json();
+    bar.style.width = '100%';
+
+    const doc = {
+      id: data.id || ('doc-' + Date.now()),
+      name: data.name || url.split('/').pop() || 'Link document',
+      type: data.type || 'application/pdf',
+      size: data.size || 0,
+      date: new Date().toISOString(),
+      case_id: state.selectedCase?.sv_id || null,
+      mime: data.type || 'application/pdf',
+      url: url
+    };
+    state.documents.push(doc);
+    saveDocState();
+    status.textContent = 'Fetched: ' + doc.name;
+    status.style.color = 'var(--green)';
+    showToast('Document fetched from URL');
+    setTimeout(() => { closeIntake(); render(); }, 800);
+  } catch (e) {
+    bar.style.width = '100%';
+    bar.style.background = 'var(--red)';
+    // Save as reference anyway
+    const doc = {
+      id: 'doc-' + Date.now(),
+      name: url.split('/').pop() || 'Link document',
+      type: 'link',
+      size: 0,
+      date: new Date().toISOString(),
+      case_id: state.selectedCase?.sv_id || null,
+      mime: 'text/uri',
+      url: url,
+      local: true
+    };
+    state.documents.push(doc);
+    saveDocState();
+    status.textContent = 'Saved link reference: ' + e.message;
+    status.style.color = 'var(--orange)';
+    setTimeout(() => { closeIntake(); render(); }, 800);
+  }
+}
+
+// ─── TEXT PASTE ───
+async function submitPaste() {
+  const text = document.getElementById('paste-input').value.trim();
+  if (!text) return;
+  const name = document.getElementById('paste-name').value.trim() || ('Pasted-' + new Date().toISOString().slice(0,10));
+  const bar = document.getElementById('paste-progress-bar');
+  const progress = document.getElementById('paste-progress');
+  const status = document.getElementById('paste-status');
+  progress.classList.add('active');
+  bar.style.width = '30%';
+  status.textContent = 'Saving...';
+
+  try {
+    bar.style.width = '60%';
+    const resp = await fetch(API + '/doc/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, name, case_id: state.selectedCase?.sv_id || null })
+    });
+    bar.style.width = '90%';
+    const data = await resp.json();
+    bar.style.width = '100%';
+
+    const doc = {
+      id: data.id || ('doc-' + Date.now()),
+      name: name + '.txt',
+      type: 'text/plain',
+      size: text.length,
+      date: new Date().toISOString(),
+      case_id: state.selectedCase?.sv_id || null,
+      mime: 'text/plain',
+      content: text
+    };
+    state.documents.push(doc);
+    saveDocState();
+    status.textContent = 'Saved: ' + doc.name;
+    status.style.color = 'var(--green)';
+    showToast('Text document saved');
+    setTimeout(() => { closeIntake(); render(); }, 800);
+  } catch (e) {
+    bar.style.width = '100%';
+    const doc = {
+      id: 'doc-' + Date.now(),
+      name: name + '.txt',
+      type: 'text/plain',
+      size: text.length,
+      date: new Date().toISOString(),
+      case_id: state.selectedCase?.sv_id || null,
+      mime: 'text/plain',
+      content: text,
+      local: true
+    };
+    state.documents.push(doc);
+    saveDocState();
+    status.textContent = 'Saved locally';
+    status.style.color = 'var(--orange)';
+    setTimeout(() => { closeIntake(); render(); }, 800);
+  }
+}
+
+// ─── DRAG & DROP ───
+let dragCounter = 0;
+document.addEventListener('dragenter', e => {
+  e.preventDefault();
+  dragCounter++;
+  document.getElementById('drop-overlay').classList.add('active');
+});
+document.addEventListener('dragleave', e => {
+  e.preventDefault();
+  dragCounter--;
+  if (dragCounter <= 0) {
+    dragCounter = 0;
+    document.getElementById('drop-overlay').classList.remove('active');
+  }
+});
+document.addEventListener('dragover', e => { e.preventDefault(); });
+document.addEventListener('drop', async e => {
+  e.preventDefault();
+  dragCounter = 0;
+  document.getElementById('drop-overlay').classList.remove('active');
+  const files = e.dataTransfer?.files;
+  if (files && files.length) {
+    for (const f of files) { await uploadFile(f); }
+  }
+});
+
+// ─── GOOGLE DRIVE PICKER ───
+function openDrivePicker() {
+  closeIntake();
+  const token = localStorage.getItem('sv-gtoken');
+  if (!token) { showToast('Connect Google first in Settings'); return; }
+
+  // Load Google Picker API if not loaded
+  if (typeof google === 'undefined' || !google.picker) {
+    const script = document.createElement('script');
+    script.src = 'https://apis.google.com/js/api.js';
+    script.onload = () => {
+      gapi.load('picker', () => createDrivePicker(token));
+    };
+    document.head.appendChild(script);
+  } else {
+    createDrivePicker(token);
+  }
+}
+
+function createDrivePicker(token) {
+  try {
+    const picker = new google.picker.PickerBuilder()
+      .addView(google.picker.ViewId.DOCS)
+      .addView(google.picker.ViewId.RECENTLY_PICKED)
+      .setOAuthToken(token)
+      .setCallback(drivePickerCallback)
+      .build();
+    picker.setVisible(true);
+  } catch (e) {
+    showToast('Drive picker error: ' + e.message);
+  }
+}
+
+async function drivePickerCallback(data) {
+  if (data.action !== 'picked' || !data.docs?.length) return;
+  const doc = data.docs[0];
+  const driveUrl = doc.url || ('https://drive.google.com/file/d/' + doc.id);
+  showToast('Fetching from Drive...');
+
+  try {
+    const resp = await fetch(API + '/doc/from-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: driveUrl, case_id: state.selectedCase?.sv_id || null })
+    });
+    const result = await resp.json();
+    const newDoc = {
+      id: result.id || ('doc-' + Date.now()),
+      name: doc.name || 'Drive document',
+      type: doc.mimeType || 'application/pdf',
+      size: doc.sizeBytes || 0,
+      date: new Date().toISOString(),
+      case_id: state.selectedCase?.sv_id || null,
+      mime: doc.mimeType,
+      url: driveUrl
+    };
+    state.documents.push(newDoc);
+    saveDocState();
+    showToast('Imported: ' + newDoc.name);
+    render();
+  } catch (e) {
+    const newDoc = {
+      id: 'doc-' + Date.now(),
+      name: doc.name || 'Drive document',
+      type: doc.mimeType || 'application/pdf',
+      size: doc.sizeBytes || 0,
+      date: new Date().toISOString(),
+      case_id: state.selectedCase?.sv_id || null,
+      mime: doc.mimeType,
+      url: driveUrl,
+      local: true
+    };
+    state.documents.push(newDoc);
+    saveDocState();
+    showToast('Saved Drive reference locally');
+    render();
+  }
+}
+
+// ─── DOCUMENT VIEWER HTML ───
+function renderDocViewer(doc) {
+  const ti = docTypeIcon(doc.mime, doc.name);
+  const viewUrl = doc.url || (API + '/doc/' + doc.id);
+  let bodyHtml = '';
+
+  if (doc.mime && doc.mime.startsWith('image/')) {
+    bodyHtml = `<img src="${viewUrl}" alt="${doc.name}" loading="lazy"/>`;
+  } else if (doc.mime && doc.mime.includes('pdf')) {
+    bodyHtml = `<object data="${viewUrl}" type="application/pdf"><p style="padding:12px;color:var(--dim);font-size:11px">PDF preview unavailable. <a href="${viewUrl}" target="_blank" style="color:var(--gold)">Open in new tab</a></p></object>`;
+  } else if (doc.content) {
+    bodyHtml = `<pre>${escHtml(doc.content)}</pre>`;
+  } else {
+    bodyHtml = `<pre style="color:var(--dim);text-align:center;padding:24px">${ti.icon} ${doc.name}\n${formatFileSize(doc.size)}</pre>`;
+  }
+
+  return `<div class="doc-viewer fade-in">
+    <div class="doc-viewer-header">
+      <span class="dvh-name">${ti.icon} ${escHtml(doc.name)}</span>
+      <div class="doc-viewer-actions">
+        <button onclick="window.open('${viewUrl}','_blank')">View Original</button>
+        <button class="analyze-btn" onclick="analyzeDoc('${doc.id}')">Analyze</button>
+      </div>
+    </div>
+    <div class="doc-viewer-body">${bodyHtml}</div>
+  </div>`;
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─── DOCUMENT LIST HTML ───
+function renderDocList(docs) {
+  if (!docs.length) return `<div style="padding:16px;text-align:center;color:var(--dim);font-size:11px;font-family:var(--mono)">No documents attached. Tap + to add.</div>`;
+  return `<div class="doc-list">${docs.map(d => {
+    const ti = docTypeIcon(d.mime, d.name);
+    return `<div class="doc-list-item" onclick="viewDocInline('${d.id}')">
+      <div class="doc-list-icon ${ti.cls}">${ti.icon}</div>
+      <div class="doc-list-info">
+        <div class="dli-name">${escHtml(d.name)}</div>
+        <div class="dli-meta">${formatFileSize(d.size)} ${d.date ? ' \u00b7 ' + d.date.slice(0,10) : ''}${d.local ? ' \u00b7 local' : ''}</div>
+      </div>
+      <button class="doc-list-analyze" onclick="event.stopPropagation();analyzeDoc('${d.id}')">Analyze</button>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+// ─── DOC BADGE ───
+function docBadgeHtml(svId) {
+  const count = state.documents.filter(d => d.case_id === svId).length;
+  if (!count) return '';
+  return `<span class="doc-badge">${count}</span>`;
+}
+
+// ─── VIEW DOC INLINE (toggles a viewer under L4) ───
+function viewDocInline(docId) {
+  const doc = state.documents.find(d => d.id === docId);
+  if (!doc) return;
+  const existing = document.getElementById('inline-viewer-' + docId);
+  if (existing) { existing.remove(); return; }
+  const container = document.getElementById('doc-list-container');
+  if (container) {
+    container.insertAdjacentHTML('afterend', `<div id="inline-viewer-${docId}">${renderDocViewer(doc)}</div>`);
+  }
+}
+
+// ─── ANALYZE DOC ───
+async function analyzeDoc(docId) {
+  const doc = state.documents.find(d => d.id === docId);
+  if (!doc) return;
+  showToast('Analyzing ' + doc.name + '...');
+
+  try {
+    const resp = await fetch(API + '/doc/' + docId + '/analyze', { method: 'POST' });
+    const data = await resp.json();
+    showToast('Analysis complete');
+    // Show result in a modal-like section
+    const viewer = document.getElementById('inline-viewer-' + docId);
+    const target = viewer || document.getElementById('doc-list-container') || document.getElementById('canvas');
+    if (target) {
+      target.insertAdjacentHTML('afterend', `
+        <div class="doc-viewer fade-in" style="border-color:var(--gold)">
+          <div class="doc-viewer-header">
+            <span class="dvh-name" style="color:var(--gold)">Analysis: ${escHtml(doc.name)}</span>
+          </div>
+          <div class="doc-viewer-body">
+            <pre style="color:var(--text)">${escHtml(JSON.stringify(data, null, 2))}</pre>
+          </div>
+        </div>`);
+    }
+  } catch (e) {
+    showToast('Analysis error: ' + e.message);
+  }
+}
+
+// ─── TOAST HELPER ───
+function showToast(msg) {
+  const toast = document.getElementById('share-toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
+// ═══════════════════════════════════════════════
 // DATA LOADING
 // ═══════════════════════════════════════════════
 
@@ -1045,6 +1731,23 @@ document.addEventListener('touchmove', e => {
   }
 }, {passive:true});
 document.addEventListener('touchend', () => { lastPinchDist = 0; }, {passive:true});
+
+// Keyboard: arrows +/- Escape
+document.addEventListener('keydown', e => {
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA') return;
+  if(e.key==='ArrowLeft'||e.key==='-') zoomTo(Math.max(0, state.zoom-1));
+  if(e.key==='ArrowRight'||e.key==='+'||e.key==='=') zoomTo(Math.min(4, state.zoom+1));
+  if(e.key==='Escape'&&state.zoom>0) zoomTo(state.zoom-1);
+});
+// Trackpad: horizontal swipe or ctrl+scroll
+let wheelAccum=0;
+document.addEventListener('wheel', e => {
+  if(Math.abs(e.deltaX)>Math.abs(e.deltaY)||e.ctrlKey){
+    e.preventDefault(); wheelAccum+=e.deltaX||e.deltaY;
+    if(wheelAccum>80){zoomTo(Math.min(4,state.zoom+1));wheelAccum=0;}
+    if(wheelAccum<-80){zoomTo(Math.max(0,state.zoom-1));wheelAccum=0;}
+  }
+},{passive:false});
 
 // ═══════════════════════════════════════════════
 // INIT

@@ -30,12 +30,15 @@ Usage:
   python3 src/system.py loop [--dry]
 """
 
+import base64
 import csv
 import hashlib
 import hmac
 import io
 import json
+import mimetypes
 import os
+import re
 import sys
 import time
 import uuid
@@ -73,6 +76,41 @@ if _or_env.exists():
             OPENROUTER_KEY = _line.split("=", 1)[1].strip()
         elif _line.startswith("GEMINI_API_KEY="):
             GEMINI_API_KEY = _line.split("=", 1)[1].strip()
+
+UPLOADS_DIR      = Path(__file__).resolve().parent.parent / "uploads"
+UPLOADS_DIR.mkdir(exist_ok=True)
+
+# In-memory document metadata store: doc_id -> {doc_id, filename, size, type, path, uploaded_at, sv_id}
+DOCUMENTS = {}
+
+ALLOWED_DOC_TYPES = {".pdf", ".jpg", ".jpeg", ".png", ".heic", ".txt", ".csv", ".json", ".html", ".htm"}
+
+def _sanitize_filename(name):
+    """Strip path components and unsafe chars, keep extension."""
+    name = Path(name).name
+    name = re.sub(r'[^\w.\-]', '_', name)
+    return name or "unnamed"
+
+def _mime_for_path(p):
+    mt, _ = mimetypes.guess_type(str(p))
+    return mt or "application/octet-stream"
+
+def _scan_uploads():
+    """Populate DOCUMENTS from existing files on disk."""
+    for f in sorted(UPLOADS_DIR.iterdir()):
+        if f.is_file():
+            doc_id = f.stem
+            DOCUMENTS[doc_id] = {
+                "doc_id": doc_id,
+                "filename": f.name,
+                "size": f.stat().st_size,
+                "type": _mime_for_path(f),
+                "path": str(f),
+                "uploaded_at": datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "sv_id": "",
+            }
+
+_scan_uploads()
 
 REQUIRED_COLUMNS = {"SV_ID", "Stage", "Status", "Source", "Document_Type", "Urgency"}
 # Apps Script writes richer schema — map it to our columns
@@ -816,9 +854,14 @@ class Handler(BaseHTTPRequestHandler):
             "/protected/pipeline-state": self.h_pipeline_state,
             "/api/loop/status": self.h_loop_status_get,
             "/pipeline/runs": self.h_pipeline_list,
+            "/doc/list": self.h_doc_list,
         }
         if path in routes:
             routes[path]()
+        elif path.startswith("/doc/") and path.count("/") == 2 and path != "/doc/list":
+            # GET /doc/<doc_id> — serve the file
+            doc_id = path.split("/")[2]
+            self.h_doc_get(doc_id)
         elif path.startswith("/pipeline/") and path.count("/") == 2:
             # GET /pipeline/:run_id
             run_id = path.split("/")[2]
@@ -845,7 +888,7 @@ class Handler(BaseHTTPRequestHandler):
                 })
         elif path == "/index.html":
             self.serve_static("index.html")
-        elif path in ("/manifest.json", "/sw.js"):
+        elif path in ("/manifest.json", "/sw.js", "/check.html"):
             self.serve_static(path.lstrip("/"))
         elif path.startswith("/static/"):
             self.serve_static(path[8:])
@@ -862,9 +905,18 @@ class Handler(BaseHTTPRequestHandler):
             "/api/key": self.h_api_key, "/api/loop/start": self.h_loop_start,
             "/api/loop/status": self.h_loop_status,
             "/pipeline/start": self.h_pipeline_start,
+            "/doc/upload": self.h_doc_upload,
+            "/doc/from-url": self.h_doc_from_url,
         }
         if path in routes:
             routes[path]()
+        elif path.startswith("/doc/") and path.endswith("/analyze"):
+            # POST /doc/<doc_id>/analyze
+            parts = path.split("/")
+            if len(parts) == 4:
+                self.h_doc_analyze(parts[2])
+            else:
+                self.send_err(f"Not found: {path}", 404)
         elif path.startswith("/pipeline/") and path.endswith("/step"):
             # POST /pipeline/:run_id/step
             run_id = path.split("/")[2]
@@ -1259,6 +1311,191 @@ class Handler(BaseHTTPRequestHandler):
 
     def h_pipeline_list(self):
         self.send_json({"runs": PIPELINE.list_runs(), "count": len(PIPELINE.runs)})
+
+    # ── Document Routes ────────────────────────────────
+
+    def _store_doc(self, data, filename, sv_id=""):
+        """Write bytes to uploads/, register in DOCUMENTS, return metadata."""
+        safe = _sanitize_filename(filename)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        stored_name = f"{ts}_{safe}"
+        dest = UPLOADS_DIR / stored_name
+        dest.write_bytes(data)
+        doc_id = dest.stem
+        meta = {
+            "doc_id": doc_id,
+            "filename": safe,
+            "size": len(data),
+            "type": _mime_for_path(dest),
+            "path": str(dest),
+            "uploaded_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "sv_id": sv_id,
+        }
+        DOCUMENTS[doc_id] = meta
+        print(f"  doc: stored {safe} ({len(data)} bytes) -> {doc_id}")
+        return meta
+
+    def _read_multipart(self):
+        """Minimal multipart/form-data parser. Returns (file_bytes, filename, fields)."""
+        ct = self.headers.get("Content-Type", "")
+        if "boundary=" not in ct:
+            return None, None, {}
+        boundary = ct.split("boundary=")[1].strip()
+        if boundary.startswith('"') and boundary.endswith('"'):
+            boundary = boundary[1:-1]
+        n = int(self.headers.get("Content-Length", 0))
+        raw = self.rfile.read(n)
+        sep = ("--" + boundary).encode()
+        parts = raw.split(sep)
+        file_bytes, filename, fields = None, None, {}
+        for part in parts:
+            if b"Content-Disposition:" not in part:
+                continue
+            header_end = part.find(b"\r\n\r\n")
+            if header_end < 0:
+                continue
+            header = part[:header_end].decode("utf-8", errors="replace")
+            body = part[header_end + 4:]
+            if body.endswith(b"\r\n"):
+                body = body[:-2]
+            name_m = re.search(r'name="([^"]+)"', header)
+            fname_m = re.search(r'filename="([^"]+)"', header)
+            name = name_m.group(1) if name_m else ""
+            if fname_m:
+                filename = fname_m.group(1)
+                file_bytes = body
+            else:
+                fields[name] = body.decode("utf-8", errors="replace")
+        return file_bytes, filename, fields
+
+    def h_doc_upload(self):
+        ct = self.headers.get("Content-Type", "")
+        if "multipart/form-data" in ct:
+            file_bytes, filename, fields = self._read_multipart()
+            if not file_bytes or not filename:
+                self.send_err("No file in multipart upload", 400); return
+            sv_id = fields.get("sv_id", "")
+            meta = self._store_doc(file_bytes, filename, sv_id=sv_id)
+            self.send_json(meta, 201)
+            return
+        # JSON body: base64 content or URL
+        body = self.read_body()
+        if body.get("url"):
+            self._fetch_and_store_url(body["url"], body.get("sv_id", ""))
+            return
+        content_b64 = body.get("content", "")
+        filename = body.get("filename", "upload.bin")
+        sv_id = body.get("sv_id", "")
+        if not content_b64:
+            self.send_err("Provide file via multipart, or JSON with 'content' (base64) or 'url'", 400); return
+        try:
+            data = base64.b64decode(content_b64)
+        except Exception as e:
+            self.send_err(f"base64 decode failed: {e}", 400); return
+        meta = self._store_doc(data, filename, sv_id=sv_id)
+        self.send_json(meta, 201)
+
+    def h_doc_list(self):
+        docs = sorted(DOCUMENTS.values(), key=lambda d: d.get("uploaded_at", ""), reverse=True)
+        self.send_json({"documents": docs, "count": len(docs)})
+
+    def h_doc_get(self, doc_id):
+        meta = DOCUMENTS.get(doc_id)
+        if not meta:
+            self.send_err("document not found", 404); return
+        p = Path(meta["path"])
+        if not p.exists():
+            self.send_err("file missing from disk", 404); return
+        file_size = p.stat().st_size
+        mime = meta.get("type", "application/octet-stream")
+        # Support Range requests for PDF streaming
+        range_hdr = self.headers.get("Range")
+        if range_hdr and range_hdr.startswith("bytes="):
+            spec = range_hdr[6:]
+            start_s, _, end_s = spec.partition("-")
+            start = int(start_s) if start_s else 0
+            end = int(end_s) if end_s else file_size - 1
+            end = min(end, file_size - 1)
+            length = end - start + 1
+            with open(p, "rb") as f:
+                f.seek(start)
+                chunk = f.read(length)
+            self.send_response(206)
+            self.send_header("Content-Type", mime)
+            self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
+            self.send_header("Content-Length", str(length))
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(chunk)
+            self._log(206)
+        else:
+            content = p.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", mime)
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(content)
+            self._log(200)
+
+    def h_doc_analyze(self, doc_id):
+        meta = DOCUMENTS.get(doc_id)
+        if not meta:
+            self.send_err("document not found", 404); return
+        p = Path(meta["path"])
+        if not p.exists():
+            self.send_err("file missing from disk", 404); return
+        # Extract text: for text files read directly, otherwise use raw bytes note
+        mime = meta.get("type", "")
+        if mime.startswith("text/") or p.suffix in (".txt", ".csv", ".json", ".html", ".htm"):
+            doc_text = p.read_text(encoding="utf-8", errors="replace")
+        else:
+            doc_text = f"[Binary document: {meta['filename']}, {meta['size']} bytes, type={mime}]"
+        body = self.read_body()
+        model = body.get("model")
+        knowledge_base = body.get("knowledge_base")
+        run = PIPELINE.start_run(doc_text, model=model, knowledge_base=knowledge_base)
+        self.send_json({
+            "run_id": run["run_id"],
+            "doc_id": doc_id,
+            "filename": meta["filename"],
+            "status": run["status"],
+            "model": run["model"],
+            "created_at": run["created_at"],
+        })
+
+    def _fetch_and_store_url(self, url, sv_id=""):
+        """Fetch a URL and store the result. Handles Google Drive links."""
+        # Convert Google Drive view URLs to direct download
+        gdrive_m = re.match(r'https?://drive\.google\.com/file/d/([^/]+)', url)
+        if gdrive_m:
+            file_id = gdrive_m.group(1)
+            url = f"https://drive.google.com/uc?export=download&id={file_id}"
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "solvulator/1"})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = resp.read()
+                # Derive filename from URL or Content-Disposition
+                cd = resp.headers.get("Content-Disposition", "")
+                fname_m = re.search(r'filename="?([^";]+)"?', cd)
+                if fname_m:
+                    filename = fname_m.group(1)
+                else:
+                    filename = Path(urlparse(url).path).name or "download"
+                meta = self._store_doc(data, filename, sv_id=sv_id)
+                self.send_json(meta, 201)
+        except Exception as e:
+            self.send_err(f"Failed to fetch URL: {e}", 502)
+
+    def h_doc_from_url(self):
+        body = self.read_body()
+        url = body.get("url", "")
+        sv_id = body.get("sv_id", "")
+        if not url:
+            self.send_err("url required", 400); return
+        self._fetch_and_store_url(url, sv_id=sv_id)
 
 # ══════════════════════════════════════════════════════
 # 8. SMOKE TESTS
