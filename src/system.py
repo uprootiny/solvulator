@@ -19,7 +19,8 @@ Mounts:
   /agent/claude                   LLM proxy — hides API key (POST)
   /agent/lathe                    LATHE pre-pass proxy (POST)
   /lathe/process                  alias of /agent/lathe
-  /                               serves solvulator-v04.html (GET)
+  /                               serves storyboard.html (GET)
+  /index.html                     serves solvulator v0.4 UI (GET)
   /static/*                       static file passthrough
 
 Usage:
@@ -74,8 +75,16 @@ if _or_env.exists():
             GEMINI_API_KEY = _line.split("=", 1)[1].strip()
 
 REQUIRED_COLUMNS = {"SV_ID", "Stage", "Status", "Source", "Document_Type", "Urgency"}
-VALID_STATUSES   = {"PENDING", "RUNNING", "DONE", "BLOCKED"}
-VALID_URGENCIES  = {"high", "medium", "low"}
+# Apps Script writes richer schema — map it to our columns
+COLUMN_ALIASES   = {
+    "case_number": "SV_ID", "Case_Number": "SV_ID", "sv_id": "SV_ID",
+    "case_type": "Document_Type", "Case_Type": "Document_Type",
+    "status": "Status",
+    "defendant": "Source",  # respondent is the source authority
+    "Urgency": "Urgency", "urgency": "Urgency",
+}
+VALID_STATUSES   = {"PENDING", "RUNNING", "DONE", "BLOCKED", "N/A"}
+VALID_URGENCIES  = {"high", "medium", "low", ""}
 VALID_SCOPES     = {"PILOT", "EXPORT", "DISPATCH", "ADMIN"}
 
 # ══════════════════════════════════════════════════════
@@ -118,10 +127,26 @@ class SheetEngine:
             raise RuntimeError(f"Source not found: {source}")
 
     def _parse_header(self, line):
-        cols = [c.strip() for c in line.split(",")]
-        missing = REQUIRED_COLUMNS - set(cols)
+        raw_cols = [c.strip() for c in line.split(",")]
+        # Apply aliases: map Apps Script columns to our schema
+        cols = [COLUMN_ALIASES.get(c, c) for c in raw_cols]
+        # Check if we have the required columns (after aliasing)
+        present = set(cols)
+        missing = REQUIRED_COLUMNS - present
         if missing:
-            raise RuntimeError(f"Schema violation — missing columns: {missing}")
+            # Try case-insensitive match
+            lower_present = {c.lower(): c for c in raw_cols}
+            for req in list(missing):
+                if req.lower() in lower_present:
+                    missing.discard(req)
+            # If still missing, synthesize defaults (Apps Script schema)
+            if missing and "case_number" in {c.lower() for c in raw_cols}:
+                # Apps Script schema detected — inject missing columns
+                self._apps_script_mode = True
+                missing = set()  # accept as-is
+            elif missing:
+                raise RuntimeError(f"Schema violation — missing columns: {missing}")
+        self._raw_cols = raw_cols
         return cols
 
     def _parse_line(self, line):
@@ -138,27 +163,50 @@ class SheetEngine:
         return fields
 
     def _normalize(self, raw):
+        # Handle both native schema and Apps Script schema
+        sv_id = raw.get("SV_ID", raw.get("case_number", "")).strip()
         stage_raw = raw.get("Stage", "")
-        amount_raw = raw.get("Amount", "")
+        amount_raw = raw.get("Amount", raw.get("exhibits_count", ""))
+        status_raw = raw.get("Status", raw.get("status", "")).strip().upper()
+        source = raw.get("Source", raw.get("defendant", "")).strip()
+        doc_type = raw.get("Document_Type", raw.get("case_type", "")).strip()
+        urgency = raw.get("Urgency", raw.get("urgency", "")).strip().lower()
         stage = None
         amount = None
         try:
-            stage = int(stage_raw.strip()) if stage_raw.strip() else None
+            stage = int(stage_raw.strip()) if stage_raw.strip() else 0
         except ValueError:
-            pass
+            stage = 0
         try:
             amount = int(amount_raw.strip()) if amount_raw.strip() else None
         except ValueError:
             pass
+        if status_raw not in VALID_STATUSES:
+            status_raw = "PENDING"
+        # Preserve all extra fields from Apps Script
+        extra = {}
+        for k, v in raw.items():
+            lk = k.lower().replace(" ", "_")
+            if lk not in {"sv_id","stage","status","source","document_type","urgency","amount"}:
+                extra[lk] = v
         return {
-            "sv_id": raw.get("SV_ID", "").strip(),
+            "sv_id": sv_id if sv_id else f"AUTO-{hash(str(raw)) % 10000:04d}",
             "stage": stage,
-            "status": raw.get("Status", "").strip().upper(),
-            "source": raw.get("Source", "").strip(),
-            "document_type": raw.get("Document_Type", "").strip(),
-            "urgency": raw.get("Urgency", "").strip().lower(),
+            "status": status_raw,
+            "source": source,
+            "document_type": doc_type,
+            "urgency": urgency if urgency in VALID_URGENCIES else "medium",
             "amount": amount,
+            "plaintiff": raw.get("plaintiff", ""),
+            "defendant": raw.get("defendant", ""),
+            "case_name": raw.get("case_name", ""),
+            "decision": raw.get("decision", ""),
+            "plaintiff_strategy": raw.get("plaintiff_strategy", ""),
+            "defendant_strategy": raw.get("defendant_strategy", ""),
+            "plaintiff_deadline": raw.get("plaintiff_deadline", ""),
+            "defendant_deadline": raw.get("defendant_deadline", ""),
             "clean_text": raw.get("Clean_Text_Link", raw.get("Notes", "")).strip(),
+            "_extra": extra,
             "_raw": raw,
         }
 
@@ -168,10 +216,6 @@ class SheetEngine:
             errors.append("missing SV_ID")
         if row["status"] not in VALID_STATUSES:
             errors.append(f"invalid status: {row['status']!r}")
-        if row["urgency"] and row["urgency"] not in VALID_URGENCIES:
-            errors.append(f"invalid urgency: {row['urgency']!r}")
-        if row["stage"] is None:
-            errors.append("stage must be a non-negative integer")
         return {"valid": not errors, "row": row, "errors": errors}
 
     def load(self, source):
@@ -186,14 +230,10 @@ class SheetEngine:
             results = []
             for line in lines[1:]:
                 fields = self._parse_line(line)
-                if len(fields) != col_count:
-                    results.append({
-                        "valid": False,
-                        "row": {"sv_id": "", "_raw": {"line": line}},
-                        "errors": [f"column count mismatch: expected {col_count}, got {len(fields)}"],
-                    })
-                    continue
-                row = self._normalize(dict(zip(header, fields)))
+                # Pad or trim to match header (Apps Script rows can have variable-length exhibit/fact columns)
+                if len(fields) < col_count:
+                    fields += [""] * (col_count - len(fields))
+                row = self._normalize(dict(zip(header, fields[:col_count])))
                 results.append(self._validate(row))
 
             valid = [r for r in results if r["valid"]]
@@ -225,7 +265,7 @@ class SheetEngine:
         DENSITY_FIELDS = {
             "summary": {"sv_id", "status"},
             "focused": {"sv_id", "status", "urgency", "stage", "source"},
-            "neighborhood": {"sv_id", "status", "urgency", "stage", "source", "document_type", "amount"},
+            "neighborhood": {"sv_id", "status", "urgency", "stage", "source", "document_type", "amount", "plaintiff", "defendant", "case_name"},
             "full": None,
         }
         if density not in DENSITY_FIELDS:
@@ -499,12 +539,35 @@ class PipelineEngine:
     def __init__(self):
         self.runs = {}  # run_id -> run state dict
 
-    def start_run(self, doc_text, model=None):
+    @staticmethod
+    def _sheet_knowledge_base():
+        """Build knowledge base summary from SHEET snapshot."""
+        if SHEET.state != "ready" or not SHEET.snapshot:
+            return ""
+        rows = [r["row"] for r in SHEET.snapshot["valid"]]
+        if not rows:
+            return ""
+        lines = [f"מאגר תיקים ({len(rows)} תיקים):"]
+        for r in rows[:50]:
+            parts = [r.get("sv_id", "?"), r.get("status", "?")]
+            if r.get("urgency"):
+                parts.append(f"urgency={r['urgency']}")
+            if r.get("stage") is not None:
+                parts.append(f"stage={r['stage']}")
+            if r.get("source"):
+                parts.append(f"source={r['source']}")
+            lines.append("  " + " | ".join(parts))
+        return "\n".join(lines)
+
+    def start_run(self, doc_text, model=None, knowledge_base=None):
         doc_hash = hashlib.sha256(doc_text.encode()).hexdigest()[:12]
         run_id = f"{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{doc_hash}"
         run_dir = ARTIFACTS_DIR / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
         (run_dir / "source.txt").write_text(doc_text, encoding="utf-8")
+        # Auto-populate knowledge_base from sheet if not provided
+        if not knowledge_base and SHEET.state == "ready":
+            knowledge_base = self._sheet_knowledge_base()
         run = {
             "run_id": run_id,
             "doc_text": doc_text,
@@ -514,6 +577,7 @@ class PipelineEngine:
             "status": "pending",
             "created_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "run_dir": str(run_dir),
+            "knowledge_base": knowledge_base or "",
         }
         self.runs[run_id] = run
         print(f"  pipeline: started run {run_id} ({len(doc_text)} chars)")
@@ -524,7 +588,7 @@ class PipelineEngine:
 
     def list_runs(self):
         return [
-            {k: v for k, v in r.items() if k != "doc_text"}
+            {k: v for k, v in r.items() if k not in ("doc_text", "knowledge_base")}
             for r in sorted(self.runs.values(), key=lambda r: r["created_at"], reverse=True)
         ]
 
@@ -567,13 +631,25 @@ class PipelineEngine:
             )
         prior_context = "\n\n".join(prior_parts) if prior_parts else "(שלב ראשון)"
 
+        # Inject knowledge base context if available
+        kb = run.get("knowledge_base", "")
+        kb_section = f"\n\nמאגר ידע:\n{kb[:2000]}" if kb else ""
+
         prompt = (
             f"מסמך:\n---\n{run['doc_text'][:6000]}\n---\n\n"
-            f"תוצאות קודמות:\n{prior_context[:3000]}\n\nבצע. JSON בלבד."
+            f"תוצאות קודמות:\n{prior_context[:3000]}"
+            f"{kb_section}\n\nבצע. JSON בלבד."
         )
 
+        # Prefer Gemini, fall back to call_claude() cascade
         t0 = time.time()
-        result = call_claude(prompt, system=agent["system"], max_tokens=2000)
+        if GEMINI_API_KEY:
+            result = call_gemini(prompt, system=agent["system"], max_tokens=2000)
+            if "error" in result:
+                print(f"  pipeline: gemini failed, falling back to cascade")
+                result = call_claude(prompt, system=agent["system"], max_tokens=2000)
+        else:
+            result = call_claude(prompt, system=agent["system"], max_tokens=2000)
         elapsed = int((time.time() - t0) * 1000)
 
         # Try to parse JSON from response text
@@ -747,10 +823,10 @@ class Handler(BaseHTTPRequestHandler):
             # GET /pipeline/:run_id
             run_id = path.split("/")[2]
             self.h_pipeline_get(run_id)
-        elif path == "/" or path == "/index.html":
-            html_path = Path(STATIC_DIR) / "index.html"
+        elif path == "/":
+            html_path = Path(STATIC_DIR) / "storyboard.html"
             if html_path.exists():
-                self.serve_static("index.html")
+                self.serve_static("storyboard.html")
             else:
                 self.send_json({
                     "service": SERVICE_ID, "version": VERSION,
@@ -767,6 +843,10 @@ class Handler(BaseHTTPRequestHandler):
                         f"curl http://localhost:{PORT}/health",
                     ],
                 })
+        elif path == "/index.html":
+            self.serve_static("index.html")
+        elif path in ("/manifest.json", "/sw.js"):
+            self.serve_static(path.lstrip("/"))
         elif path.startswith("/static/"):
             self.serve_static(path[8:])
         else:
@@ -1135,12 +1215,14 @@ class Handler(BaseHTTPRequestHandler):
         if not doc_text:
             self.send_err("doc_text required", 400); return
         model = body.get("model")
-        run = PIPELINE.start_run(doc_text, model=model)
+        knowledge_base = body.get("knowledge_base")
+        run = PIPELINE.start_run(doc_text, model=model, knowledge_base=knowledge_base)
         self.send_json({
             "run_id": run["run_id"],
             "status": run["status"],
             "model": run["model"],
             "created_at": run["created_at"],
+            "has_knowledge_base": bool(run.get("knowledge_base")),
             "agents": [{"id": a["id"], "name": a["name"], "name_he": a["name_he"],
                         "requires_human": a["requires_human"]} for a in PIPELINE_AGENTS],
         })

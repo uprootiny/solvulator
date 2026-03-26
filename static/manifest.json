@@ -1,0 +1,27 @@
+{
+  "name": "Solvulator · Legal Pipeline",
+  "short_name": "Solvulator",
+  "description": "12-agent legal document processing pipeline",
+  "start_url": "/storyboard.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#07070a",
+  "background_color": "#07070a",
+  "lang": "he",
+  "dir": "rtl",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {"src": "/icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png"}
+  ],
+  "share_target": {
+    "action": "/storyboard.html",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
+}

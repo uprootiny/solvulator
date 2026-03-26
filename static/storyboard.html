@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Solvulator"/>
+<meta name="theme-color" content="#07070a"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<link rel="manifest" href="/manifest.json"/>
+<link rel="apple-touch-icon" href="/icon-192.png"/>
+<title>סולבולטור · Storyboard</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+:root {
+  --bg:#07070a; --s1:#0c0c12; --s2:#12121c; --s3:#1a1a28;
+  --border:#22222e; --border-hi:#3a3a4e;
+  --gold:#c9a84c; --red:#e05252; --green:#3db87a; --blue:#4a8fe8;
+  --orange:#e0803a; --purple:#9b6ee0; --teal:#3db8a0;
+  --text:#d4cfc7; --mid:#9a9490; --dim:#6a6460; --faint:#3a3632;
+  --mono:'SF Mono','Menlo','Courier New',monospace;
+  --sans:system-ui,-apple-system,'Segoe UI',sans-serif;
+  --safe-t:env(safe-area-inset-top,0px);
+  --safe-b:env(safe-area-inset-bottom,0px);
+  --safe-l:env(safe-area-inset-left,0px);
+  --safe-r:env(safe-area-inset-right,0px);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:var(--bg);color:var(--text);font-family:var(--sans);
+  min-height:100vh;min-height:100dvh;font-size:14px;overflow:hidden;
+  -webkit-font-smoothing:antialiased;touch-action:none}
+::-webkit-scrollbar{width:2px}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+button{cursor:pointer;font-family:var(--mono);background:none;border:none;color:inherit;
+  -webkit-touch-callout:none;min-height:44px}
+
+/* ═══ ZOOM LEVEL INDICATOR ═══ */
+#zoom-bar{position:fixed;top:var(--safe-t);left:var(--safe-l);right:var(--safe-r);
+  z-index:100;padding:8px 16px 6px;
+  background:linear-gradient(var(--bg),transparent);
+  display:flex;align-items:center;gap:8px;pointer-events:none}
+#zoom-bar *{pointer-events:auto}
+.zoom-label{font-family:var(--mono);font-size:10px;color:var(--gold);letter-spacing:2px;
+  text-transform:uppercase;min-width:80px}
+.zoom-dots{display:flex;gap:4px;flex:1;justify-content:center}
+.zoom-dot{width:6px;height:6px;border-radius:50%;background:var(--faint);
+  transition:all .3s ease}
+.zoom-dot.active{background:var(--gold);width:10px;border-radius:5px}
+#breadcrumb{font-size:11px;color:var(--dim);font-family:var(--mono);
+  text-align:left;direction:ltr;max-width:50%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ═══ CANVAS ═══ */
+#canvas{position:fixed;top:0;left:0;right:0;bottom:0;
+  padding:calc(40px + var(--safe-t)) 16px calc(80px + var(--safe-b)) 16px;
+  overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;
+  touch-action:pan-y}
+
+/* ═══ L0: CONSTELLATION — all cases as threads ═══ */
+.L0{display:flex;flex-direction:column;gap:2px;padding:8px 0}
+.thread{display:flex;align-items:center;gap:0;height:28px;border-radius:4px;
+  transition:all .3s ease;cursor:pointer;position:relative;overflow:hidden}
+.thread:active{transform:scale(0.98);opacity:0.8}
+.thread-label{position:absolute;right:8px;top:50%;transform:translateY(-50%);
+  font-size:10px;color:var(--mid);font-family:var(--mono);white-space:nowrap;
+  pointer-events:none;z-index:1}
+.thread-bar{height:100%;min-width:3px;transition:all .3s ease}
+.thread-bar.done{background:var(--green);opacity:0.6}
+.thread-bar.running{background:var(--gold);opacity:0.8}
+.thread-bar.pending{background:var(--s3);opacity:0.5}
+.thread-bar.blocked{background:var(--red);opacity:0.7}
+.urgency-pip{position:absolute;left:6px;top:50%;transform:translateY(-50%);
+  width:5px;height:5px;border-radius:50%}
+.urgency-pip.urgent,.urgency-pip.critical{background:var(--red)}
+.urgency-pip.high{background:var(--orange)}
+.urgency-pip.medium{background:var(--gold)}
+.urgency-pip.low{background:var(--dim)}
+
+/* ═══ L1: CASE TIMELINE — single case events ═══ */
+.L1{display:flex;flex-direction:column;gap:0;padding:8px 0}
+.timeline-spine{position:absolute;right:20px;top:0;bottom:0;width:2px;background:var(--border)}
+.tl-event{position:relative;padding:12px 36px 12px 12px;border-bottom:1px solid var(--border);
+  cursor:pointer;transition:all .2s ease}
+.tl-event:active{background:var(--s1)}
+.tl-dot{position:absolute;right:16px;top:18px;width:10px;height:10px;
+  border-radius:50%;border:2px solid var(--border);background:var(--bg)}
+.tl-dot.procedural{border-color:var(--blue)}
+.tl-dot.adverse{border-color:var(--red)}
+.tl-dot.our-action{border-color:var(--green)}
+.tl-dot.critical{border-color:var(--gold);background:var(--gold)}
+.tl-dot.gate{border-color:var(--purple)}
+.tl-date{font-family:var(--mono);font-size:10px;color:var(--dim);margin-bottom:2px}
+.tl-title{font-size:13px;color:var(--text);margin-bottom:2px}
+.tl-sub{font-size:11px;color:var(--mid);line-height:1.4}
+.tl-deps{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}
+.tl-dep{font-size:9px;padding:2px 6px;border-radius:3px;background:var(--s2);
+  color:var(--dim);font-family:var(--mono)}
+
+/* ═══ L2: PHASE CLUSTER — docs in a phase ═══ */
+.L2{display:flex;flex-direction:column;gap:12px;padding:8px 0}
+.phase-header{font-family:var(--mono);font-size:10px;color:var(--gold);
+  letter-spacing:2px;padding:8px 0 4px;border-bottom:1px solid var(--border)}
+.doc-card{background:var(--s1);border:1px solid var(--border);border-radius:8px;
+  padding:12px;cursor:pointer;transition:all .2s ease;position:relative}
+.doc-card:active{transform:scale(0.98);border-color:var(--gold)}
+.doc-card .urgency-stripe{position:absolute;top:0;right:0;bottom:0;width:3px;
+  border-radius:0 8px 8px 0}
+.doc-card .urgency-stripe.urgent,.doc-card .urgency-stripe.critical{background:var(--red)}
+.doc-card .urgency-stripe.high{background:var(--orange)}
+.doc-card .urgency-stripe.medium{background:var(--gold)}
+.doc-card .urgency-stripe.low{background:var(--dim)}
+.doc-title{font-size:13px;margin-bottom:4px}
+.doc-meta{font-family:var(--mono);font-size:10px;color:var(--dim);display:flex;gap:8px;flex-wrap:wrap}
+.doc-meta span{display:flex;align-items:center;gap:3px}
+.doc-parties{font-size:11px;color:var(--mid);margin-top:6px;line-height:1.4}
+.doc-stakes{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}
+.stake-tag{font-size:9px;padding:2px 6px;border-radius:3px;font-family:var(--mono)}
+.stake-tag.property{background:rgba(201,168,76,0.15);color:var(--gold)}
+.stake-tag.access{background:rgba(74,143,232,0.15);color:var(--blue)}
+.stake-tag.fee{background:rgba(224,82,82,0.15);color:var(--red)}
+.stake-tag.procedure{background:rgba(155,110,224,0.15);color:var(--purple)}
+.stake-tag.constitutional{background:rgba(61,184,160,0.15);color:var(--teal)}
+
+/* ═══ L3: DOCUMENT CONTEXT — single doc + implications ═══ */
+.L3{display:flex;flex-direction:column;gap:0;padding:4px 0}
+.doc-hero{background:var(--s1);border:1px solid var(--border);border-radius:10px;
+  padding:16px;margin-bottom:12px}
+.doc-hero-title{font-size:16px;margin-bottom:8px;color:var(--text)}
+.doc-hero-sub{font-size:12px;color:var(--mid);line-height:1.5;margin-bottom:10px}
+.meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
+.meta-cell{background:var(--bg);border-radius:6px;padding:8px}
+.meta-cell-label{font-size:9px;color:var(--dim);font-family:var(--mono);letter-spacing:1px;
+  text-transform:uppercase;margin-bottom:2px}
+.meta-cell-value{font-size:12px;color:var(--text)}
+
+.context-section{margin-top:12px}
+.context-header{font-family:var(--mono);font-size:10px;color:var(--gold);
+  letter-spacing:1px;padding:8px 0;display:flex;align-items:center;gap:6px;
+  cursor:pointer}
+.context-header::before{content:'';display:block;width:4px;height:4px;
+  border-right:1.5px solid var(--gold);border-bottom:1.5px solid var(--gold);
+  transform:rotate(-45deg);transition:transform .2s}
+.context-header.open::before{transform:rotate(45deg)}
+.context-body{overflow:hidden;max-height:0;transition:max-height .3s ease;padding:0 8px}
+.context-body.open{max-height:2000px}
+
+/* implications */
+.implication{padding:10px 0;border-bottom:1px solid var(--border)}
+.impl-arrow{font-size:10px;color:var(--dim);margin-bottom:2px;font-family:var(--mono)}
+.impl-text{font-size:12px;color:var(--text);line-height:1.5}
+.impl-weight{font-size:9px;font-family:var(--mono);margin-top:4px;
+  display:inline-block;padding:1px 6px;border-radius:3px}
+.impl-weight.opens{background:rgba(61,184,122,0.15);color:var(--green)}
+.impl-weight.closes{background:rgba(224,82,82,0.15);color:var(--red)}
+.impl-weight.shifts{background:rgba(201,168,76,0.15);color:var(--gold)}
+.impl-weight.narrows{background:rgba(155,110,224,0.15);color:var(--purple)}
+
+/* framing */
+.framing-item{padding:8px 0;border-bottom:1px solid var(--border)}
+.frame-label{font-size:10px;color:var(--dim);font-family:var(--mono)}
+.frame-text{font-size:12px;color:var(--text);margin-top:2px;line-height:1.4}
+
+/* dependencies */
+.dep-item{display:flex;align-items:start;gap:8px;padding:8px 0;
+  border-bottom:1px solid var(--border);cursor:pointer}
+.dep-item:active{opacity:0.7}
+.dep-direction{font-size:18px;color:var(--dim);min-width:20px;text-align:center;line-height:1}
+.dep-info{flex:1}
+.dep-label{font-size:12px;color:var(--text)}
+.dep-detail{font-size:10px;color:var(--dim);margin-top:2px;font-family:var(--mono)}
+
+/* ═══ L4: DEEP DIVE — full text + annotations ═══ */
+.L4{display:flex;flex-direction:column;gap:0;padding:4px 0}
+.doc-full-text{background:var(--s1);border:1px solid var(--border);border-radius:8px;
+  padding:16px;font-size:13px;line-height:1.8;color:var(--text);
+  direction:rtl;white-space:pre-wrap;font-family:var(--sans)}
+.annotation-margin{position:fixed;left:var(--safe-l);top:calc(50px + var(--safe-t));
+  bottom:calc(80px + var(--safe-b));width:40px;display:flex;flex-direction:column;
+  gap:4px;padding:4px;overflow-y:auto;z-index:50}
+.margin-pin{width:32px;height:32px;border-radius:6px;background:var(--s2);
+  border:1px solid var(--border);display:flex;align-items:center;justify-content:center;
+  font-size:12px;cursor:pointer;transition:all .2s}
+.margin-pin:active{background:var(--gold);color:var(--bg)}
+.margin-pin.pinned{border-color:var(--gold);color:var(--gold)}
+
+/* ═══ BOTTOM NAV ═══ */
+#nav{position:fixed;bottom:0;left:0;right:0;z-index:100;
+  background:var(--s1);border-top:1px solid var(--border);
+  padding:6px 0 calc(6px + var(--safe-b));
+  display:flex;justify-content:space-around}
+.nav-btn{display:flex;flex-direction:column;align-items:center;gap:2px;
+  padding:6px 12px;border-radius:8px;font-size:18px;min-width:60px;
+  transition:all .2s}
+.nav-btn span{font-size:9px;font-family:var(--mono);color:var(--dim)}
+.nav-btn.active{color:var(--gold)}
+.nav-btn.active span{color:var(--gold)}
+.nav-btn:active{background:var(--s2)}
+
+/* ═══ SHARE TARGET INDICATOR ═══ */
+.share-toast{position:fixed;top:calc(var(--safe-t) + 50px);left:50%;
+  transform:translateX(-50%);background:var(--green);color:var(--bg);
+  padding:8px 16px;border-radius:8px;font-size:12px;font-family:var(--mono);
+  z-index:200;opacity:0;transition:opacity .3s;pointer-events:none}
+.share-toast.show{opacity:1}
+
+/* ═══ SETTINGS PANEL (iOS sheet style) ═══ */
+#settings-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:300;
+  opacity:0;pointer-events:none;transition:opacity .3s ease}
+#settings-overlay.open{opacity:1;pointer-events:auto}
+#settings-panel{position:fixed;bottom:0;left:0;right:0;z-index:301;
+  background:var(--s1);border-top:1px solid var(--border);border-radius:16px 16px 0 0;
+  padding:16px 20px calc(20px + var(--safe-b));max-height:80vh;overflow-y:auto;
+  transform:translateY(100%);transition:transform .35s cubic-bezier(.32,.72,0,1)}
+#settings-panel.open{transform:translateY(0)}
+.settings-handle{width:36px;height:4px;background:var(--border-hi);border-radius:2px;
+  margin:0 auto 16px}
+.settings-title{font-family:var(--mono);font-size:11px;color:var(--gold);
+  letter-spacing:2px;text-transform:uppercase;margin-bottom:12px}
+.settings-field{margin-bottom:12px}
+.settings-field label{display:block;font-size:10px;color:var(--dim);
+  font-family:var(--mono);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
+.settings-field input{width:100%;font-size:12px;padding:10px;background:var(--bg);
+  border:1px solid var(--border);border-radius:8px;color:var(--text);
+  font-family:var(--mono);outline:none}
+.settings-field input:focus{border-color:var(--gold)}
+.settings-btn{width:100%;padding:12px;border-radius:8px;font-size:12px;
+  font-family:var(--mono);letter-spacing:1px;margin-bottom:8px;min-height:44px;
+  transition:all .2s}
+.settings-btn.primary{background:var(--gold);color:var(--bg)}
+.settings-btn.primary:active{opacity:0.8}
+.settings-btn.secondary{background:var(--s2);border:1px solid var(--border);color:var(--text)}
+.settings-btn.secondary:active{background:var(--s3)}
+.settings-btn.danger{background:rgba(224,82,82,0.15);color:var(--red);border:1px solid rgba(224,82,82,0.3)}
+.settings-status{font-size:10px;font-family:var(--mono);padding:6px 10px;
+  border-radius:6px;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.settings-status.connected{background:rgba(61,184,122,0.12);color:var(--green)}
+.settings-status.disconnected{background:rgba(224,82,82,0.12);color:var(--red)}
+.settings-divider{height:1px;background:var(--border);margin:16px 0}
+
+/* ═══ ANIMATIONS ═══ */
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.fade-in{animation:fadeIn .25s ease}
+@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
+.slide-up{animation:slideUp .3s ease}
+
+/* ═══ RESPONSIVE ═══ */
+@media(min-width:768px){
+  #canvas{max-width:640px;margin:0 auto}
+  .meta-grid{grid-template-columns:1fr 1fr 1fr}
+}
+</style>
+</head>
+<body>
+
+<div id="zoom-bar">
+  <span class="zoom-label" id="zoom-label">L0 WEAVE</span>
+  <div class="zoom-dots" id="zoom-dots"></div>
+  <span id="breadcrumb"></span>
+</div>
+
+<div id="canvas"></div>
+
+<div class="share-toast" id="share-toast">Document received</div>
+
+<div id="settings-overlay" onclick="closeSettings()"></div>
+<div id="settings-panel">
+  <div class="settings-handle"></div>
+  <div class="settings-title">Google Sheets Connection</div>
+  <div id="gsheet-status" class="settings-status disconnected">Not connected</div>
+
+  <div class="settings-field">
+    <label>Google OAuth Client ID</label>
+    <input type="text" id="gs-client-id" placeholder="xxxx.apps.googleusercontent.com"/>
+  </div>
+
+  <button class="settings-btn primary" id="gs-connect-btn" onclick="connectGoogle()">Connect to Google</button>
+
+  <div class="settings-divider"></div>
+
+  <div class="settings-field">
+    <label>Sheet ID or URL</label>
+    <input type="text" id="gs-sheet-id" placeholder="Sheet ID or full Google Sheets URL"/>
+  </div>
+
+  <button class="settings-btn secondary" onclick="saveSheetSettings()">Save Settings</button>
+  <button class="settings-btn secondary" onclick="reloadSheet()">Reload Sheet</button>
+
+  <div class="settings-divider"></div>
+
+  <button class="settings-btn danger" onclick="disconnectGoogle()">Disconnect</button>
+</div>
+
+<nav id="nav">
+  <button class="nav-btn active" data-zoom="0" onclick="zoomTo(0)">
+    <span style="font-size:20px">&#x2725;</span><span>Weave</span>
+  </button>
+  <button class="nav-btn" data-zoom="1" onclick="zoomTo(1)">
+    <span style="font-size:20px">&#x23F3;</span><span>Timeline</span>
+  </button>
+  <button class="nav-btn" data-zoom="2" onclick="zoomTo(2)">
+    <span style="font-size:20px">&#x25A3;</span><span>Phase</span>
+  </button>
+  <button class="nav-btn" data-zoom="3" onclick="zoomTo(3)">
+    <span style="font-size:20px">&#x25C9;</span><span>Doc</span>
+  </button>
+  <button class="nav-btn" data-zoom="4" onclick="zoomTo(4)">
+    <span style="font-size:20px">&#x270E;</span><span>Deep</span>
+  </button>
+  <button class="nav-btn" onclick="openSettings()">
+    <span style="font-size:20px">&#x2699;</span><span>Sheet</span>
+  </button>
+</nav>
+
+<script>
+// ═══════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════
+
+const API = location.port === '9801' ? '' : 'http://' + location.hostname + ':9801';
+const ZOOM_NAMES = ['L0 WEAVE','L1 TIMELINE','L2 PHASE','L3 CONTEXT','L4 DEEP'];
+const PHASES = {
+  intake:[1,2], analysis:[3,4,5], intelligence:[6,7],
+  action:[8,9], control:[10,11,12]
+};
+const PHASE_LABELS = {
+  intake:'INTAKE · קליטה', analysis:'ANALYSIS · ניתוח',
+  intelligence:'INTELLIGENCE · מודיעין', action:'ACTION · פעולה',
+  control:'CONTROL · בקרה'
+};
+
+let state = {
+  zoom: 0,
+  cases: [],       // all cases from sheet
+  selectedCase: null,
+  selectedPhase: null,
+  selectedDoc: null,
+  pins: JSON.parse(localStorage.getItem('sv-pins')||'[]'),
+  breadcrumb: []
+};
+
+// ═══════════════════════════════════════════════
+// SAMPLE DATA (replaced by API when available)
+// ═══════════════════════════════════════════════
+
+const SAMPLE_CASES = [
+  {
+    sv_id:'SV-HCJ78240', case_number:'HCJ 78240/24',
+    source:'בג"ץ', doc_type:'החלטה', urgency:'high', status:'DONE', stage:4,
+    amount:1500,
+    parties:{petitioner:'אברהם',respondent:'עיריית חיפה',judge:'כב\' השופטת ברק-ארז'},
+    summary_he:'עתירה נגד חיוב ארנונה בלתי מידתי — החלטת ביניים מחייבת הגשת מסמכים כלכליים',
+    summary_en:'Petition against disproportionate municipal tax — interim order requires economic docs',
+    stakes:['property','fee','constitutional'],
+    deadlines:[{action:'הגשת מסמכים כלכליים',date:'2026-04-01',days_remaining:6,consequence:'מחיקת הבקשה'}],
+    events:[
+      {date:'2024-06-15',type:'adverse',title:'חיוב ארנונה מופרז',sub:'עיריית חיפה מוציאה שומה חדשה — פי 3 מהשנה הקודמת'},
+      {date:'2024-09-01',type:'our-action',title:'השגה מנהלית',sub:'הגשת השגה למנהל הארנונה עם חוות דעת שמאי'},
+      {date:'2024-12-10',type:'adverse',title:'דחיית ההשגה',sub:'מנהל הארנונה דוחה ללא הנמקה מפורטת'},
+      {date:'2025-01-15',type:'our-action',title:'ערר לוועדת ערר',sub:'ערר על דחיית ההשגה + בקשת פטור'},
+      {date:'2025-06-20',type:'adverse',title:'דחיית הערר',sub:'ועדת הערר דוחה — "אין מקום להתערב בשיקול דעת"'},
+      {date:'2025-08-01',type:'our-action',title:'עתירה לבג"ץ',sub:'עתירה על אי-מידתיות + אכיפה בררנית'},
+      {date:'2025-11-15',type:'procedural',title:'דיון ראשון',sub:'בית המשפט מבקש תגובת המשיבה'},
+      {date:'2026-01-20',type:'adverse',title:'תגובת העירייה',sub:'טוענת סמכות + שיהוי + העדר עילה'},
+      {date:'2026-02-28',type:'critical',title:'החלטת ביניים',sub:'חובת הגשת מסמכים כלכליים תוך 30 יום',
+       implications:[
+         {type:'opens',text:'מאפשרת הוכחת מצב כלכלי — פותחת ראש נזק חדש'},
+         {type:'closes',text:'סוגרת טענת שיהוי — בית המשפט קיבל את התיק'},
+         {type:'shifts',text:'מעבירה נטל ההוכחה לעותר — צריך ראיות כלכליות'},
+         {type:'narrows',text:'מצמצמת את הדיון לשאלת המידתיות בלבד'}
+       ],
+       framing:[
+         {label:'FRAME: PROPORTIONALITY',text:'בית המשפט מסגר את השאלה כשאלת מידתיות — לא חוקיות'},
+         {label:'FRAME: BURDEN',text:'נטל ההוכחה על העותר להראות חוסר מידתיות, לא על הרשות'},
+         {label:'FRAME: DEFERENCE',text:'שיקול דעת מנהלי מוגן — התערבות רק במקרי קיצון'}
+       ]},
+      {date:'2026-03-20',type:'gate',title:'Agent 04 — מיפוי מבני',sub:'ניתוח מבנה משפטי הושלם. DONE.'},
+      {date:'2026-04-01',type:'critical',title:'מועד הגשה אחרון',sub:'תצהיר כלכלי + מסמכים תומכים'}
+    ],
+    dependencies:[
+      {direction:'blocks',target:'SV-TA1204',label:'פסק דין כאן ישפיע על הערעור שם'},
+      {direction:'needs',target:'FOI-001',label:'תשובת חופש מידע על נוהל ארנונה פנימי'}
+    ]
+  },
+  {
+    sv_id:'SV-TA1204', case_number:'TA 1204/26',
+    source:'שלום חדרה', doc_type:'החלטה', urgency:'high', status:'BLOCKED', stage:2,
+    amount:0,
+    parties:{petitioner:'אברהם',respondent:'לשכת ההוצאה לפועל',judge:'כב\' השופט לוי'},
+    summary_he:'בקשה לעיכוב הליכים עד למתן פסק דין בבג"ץ — חסום בגלל הליך מקביל',
+    summary_en:'Stay request pending HCJ ruling — blocked by parallel proceedings',
+    stakes:['access','procedure','fee'],
+    deadlines:[{action:'הגשת העתק החלטת בג"ץ',date:'2026-03-07',days_remaining:-19,consequence:'דחיית הבקשה'}],
+    events:[
+      {date:'2026-01-10',type:'adverse',title:'פתיחת תיק הוצל"פ',sub:'לשכת ההוצאה לפועל פותחת תיק על חוב ארנונה'},
+      {date:'2026-02-01',type:'our-action',title:'בקשת עיכוב',sub:'בקשה לעיכוב הליכים בשל עתירה תלויה בבג"ץ'},
+      {date:'2026-02-25',type:'adverse',title:'דרישה להעתק',sub:'בית המשפט דורש העתק החלטת בג"ץ תוך 10 ימים'},
+      {date:'2026-03-07',type:'critical',title:'מועד שחלף',sub:'לא הוגש העתק — הבקשה בסכנת דחייה'}
+    ],
+    dependencies:[
+      {direction:'blocked-by',target:'SV-HCJ78240',label:'ממתין לפסק דין בג"ץ'}
+    ]
+  },
+  {
+    sv_id:'SV-003', case_number:'FOI-001',
+    source:'חופש מידע', doc_type:'בקשה', urgency:'medium', status:'PENDING', stage:1,
+    amount:0,
+    parties:{petitioner:'אברהם',respondent:'עיריית חיפה — מחלקת ארנונה',judge:''},
+    summary_he:'בקשת חופש מידע על נוהל פנימי לחישוב ארנונה ופטורים',
+    summary_en:'FOI request for internal municipal tax calculation procedures',
+    stakes:['access','constitutional'],
+    deadlines:[{action:'תשובה מהרשות',date:'2026-04-25',days_remaining:30,consequence:'ערעור לבית משפט'}],
+    events:[
+      {date:'2026-03-26',type:'our-action',title:'הגשת בקשה',sub:'בקשת חופש מידע לפי חוק חופש המידע תשנ"ח'},
+    ],
+    dependencies:[
+      {direction:'supports',target:'SV-HCJ78240',label:'תשובה תתמוך בטענת אכיפה בררנית'}
+    ]
+  }
+];
+
+// ═══════════════════════════════════════════════
+// RENDERING
+// ═══════════════════════════════════════════════
+
+function render() {
+  const c = document.getElementById('canvas');
+  c.className = 'fade-in';
+  updateZoomUI();
+  switch(state.zoom) {
+    case 0: renderL0(c); break;
+    case 1: renderL1(c); break;
+    case 2: renderL2(c); break;
+    case 3: renderL3(c); break;
+    case 4: renderL4(c); break;
+  }
+}
+
+function updateZoomUI() {
+  document.getElementById('zoom-label').textContent = ZOOM_NAMES[state.zoom];
+  const dots = document.getElementById('zoom-dots');
+  dots.innerHTML = [0,1,2,3,4].map(i =>
+    `<div class="zoom-dot${i===state.zoom?' active':''}"></div>`
+  ).join('');
+  document.querySelectorAll('.nav-btn').forEach(b => {
+    b.classList.toggle('active', +b.dataset.zoom === state.zoom);
+  });
+  const parts = state.breadcrumb.slice(0, state.zoom+1);
+  document.getElementById('breadcrumb').textContent = parts.join(' > ');
+}
+
+// ─── L0: CONSTELLATION ───
+function renderL0(c) {
+  state.breadcrumb = ['All Cases'];
+  const cases = state.cases;
+  // Sort: urgent first, then by stage descending
+  const urgOrd = {urgent:0,critical:0,high:1,medium:2,low:3};
+  const sorted = [...cases].sort((a,b) =>
+    (urgOrd[a.urgency]||3) - (urgOrd[b.urgency]||3) || (b.stage||0) - (a.stage||0)
+  );
+  c.innerHTML = '<div class="L0">' + sorted.map(cs => {
+    const total = 12;
+    const done = Math.min(cs.stage || 0, total);
+    const running = cs.status === 'RUNNING' ? 1 : 0;
+    const blocked = cs.status === 'BLOCKED' ? total - done : 0;
+    const pending = total - done - running - blocked;
+    const bars = [];
+    if(done>0) bars.push(`<div class="thread-bar done" style="width:${done/total*100}%"></div>`);
+    if(running>0) bars.push(`<div class="thread-bar running" style="width:${running/total*100}%"></div>`);
+    if(blocked>0) bars.push(`<div class="thread-bar blocked" style="width:${blocked/total*100}%"></div>`);
+    if(pending>0) bars.push(`<div class="thread-bar pending" style="width:${pending/total*100}%"></div>`);
+    return `<div class="thread" onclick="selectCase('${cs.sv_id}')" style="background:var(--s1)">
+      <div class="urgency-pip ${cs.urgency}"></div>
+      ${bars.join('')}
+      <span class="thread-label">${cs.sv_id} · ${cs.source} · ${cs.status}</span>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+// ─── L1: TIMELINE ───
+function renderL1(c) {
+  const cs = state.selectedCase;
+  if(!cs){c.innerHTML='<div style="padding:40px;color:var(--dim);text-align:center">Select a case from L0 Weave</div>';return}
+  state.breadcrumb = ['All Cases', cs.sv_id];
+  const events = cs.events || [];
+  c.innerHTML = `
+    <div style="padding:8px 0 12px">
+      <div style="font-size:15px;color:var(--text)">${cs.case_number}</div>
+      <div style="font-size:11px;color:var(--mid);margin-top:2px">${cs.summary_he}</div>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+        ${(cs.stakes||[]).map(s=>`<span class="stake-tag ${s}">${s}</span>`).join('')}
+      </div>
+    </div>
+    <div class="L1" style="position:relative">
+      <div class="timeline-spine"></div>
+      ${events.map((ev,i) => `
+        <div class="tl-event slide-up" style="animation-delay:${i*50}ms"
+             onclick="selectEvent(${i})">
+          <div class="tl-dot ${ev.type}"></div>
+          <div class="tl-date">${ev.date}</div>
+          <div class="tl-title">${ev.title}</div>
+          <div class="tl-sub">${ev.sub}</div>
+          ${ev.implications ? `<div class="tl-deps">${ev.implications.map(im =>
+            `<span class="tl-dep" style="color:var(--${im.type==='opens'?'green':im.type==='closes'?'red':im.type==='shifts'?'gold':'purple'})">${im.type}</span>`
+          ).join('')}</div>` : ''}
+        </div>
+      `).join('')}
+    </div>`;
+}
+
+// ─── L2: PHASE ───
+function renderL2(c) {
+  const cs = state.selectedCase;
+  if(!cs){c.innerHTML='<div style="padding:40px;color:var(--dim);text-align:center">Select a case first</div>';return}
+  state.breadcrumb = ['All Cases', cs.sv_id, state.selectedPhase || 'All Phases'];
+  c.innerHTML = `<div class="L2">` +
+    Object.entries(PHASES).map(([phase, stages]) => {
+      const label = PHASE_LABELS[phase];
+      const inPhase = stages.includes(cs.stage||0);
+      return `
+        <div class="phase-header">${label} ${inPhase?'◉':''}</div>
+        <div class="doc-card" onclick="selectPhaseDoc('${phase}')">
+          <div class="urgency-stripe ${cs.urgency}"></div>
+          <div class="doc-title">${cs.case_number}</div>
+          <div class="doc-meta">
+            <span>${cs.source}</span>
+            <span>Stage ${cs.stage}/12</span>
+            <span>${cs.status}</span>
+          </div>
+          <div class="doc-parties">${cs.parties?.petitioner||''} ← ${cs.parties?.respondent||''}</div>
+          <div class="doc-stakes">
+            ${(cs.stakes||[]).map(s=>`<span class="stake-tag ${s}">${s}</span>`).join('')}
+          </div>
+        </div>`;
+    }).join('') + '</div>';
+}
+
+// ─── L3: DOCUMENT CONTEXT ───
+function renderL3(c) {
+  const cs = state.selectedCase || state.selectedDoc;
+  if(!cs){c.innerHTML='<div style="padding:40px;color:var(--dim);text-align:center">Select a document</div>';return}
+  state.breadcrumb = ['All Cases', cs.sv_id, 'Context'];
+
+  // Find the critical event with implications
+  const critEvent = (cs.events||[]).find(e => e.implications) || (cs.events||[]).slice(-1)[0] || {};
+  const implications = critEvent.implications || [];
+  const framings = critEvent.framing || [];
+  const deps = cs.dependencies || [];
+  const deadlines = cs.deadlines || [];
+
+  c.innerHTML = `<div class="L3">
+    <div class="doc-hero">
+      <div class="doc-hero-title">${cs.case_number} — ${cs.doc_type}</div>
+      <div class="doc-hero-sub">${cs.summary_he}</div>
+      <div class="meta-grid">
+        <div class="meta-cell"><div class="meta-cell-label">SOURCE</div><div class="meta-cell-value">${cs.source}</div></div>
+        <div class="meta-cell"><div class="meta-cell-label">STAGE</div><div class="meta-cell-value">${cs.stage}/12 · ${cs.status}</div></div>
+        <div class="meta-cell"><div class="meta-cell-label">URGENCY</div><div class="meta-cell-value" style="color:var(--${cs.urgency==='high'||cs.urgency==='urgent'?'red':cs.urgency==='medium'?'gold':'dim'})">${cs.urgency}</div></div>
+        <div class="meta-cell"><div class="meta-cell-label">AMOUNT</div><div class="meta-cell-value">${cs.amount ? '₪'+cs.amount.toLocaleString() : '—'}</div></div>
+      </div>
+      <div style="font-size:11px;color:var(--mid);line-height:1.5">
+        <strong style="color:var(--text)">PARTIES</strong><br/>
+        ${cs.parties?.petitioner||'—'} → ${cs.parties?.respondent||'—'}<br/>
+        ${cs.parties?.judge ? 'שופט: '+cs.parties.judge : ''}
+      </div>
+    </div>
+
+    ${deadlines.length ? `
+    <div class="context-section">
+      <div class="context-header open" onclick="toggleSection(this)">DEADLINES · מועדים</div>
+      <div class="context-body open">
+        ${deadlines.map(d => `
+          <div class="implication">
+            <div class="impl-arrow" style="color:var(--${d.days_remaining<=7?'red':d.days_remaining<=14?'orange':'dim'})">
+              ${d.days_remaining > 0 ? d.days_remaining+' days' : Math.abs(d.days_remaining)+' days OVERDUE'}
+            </div>
+            <div class="impl-text">${d.action}</div>
+            <div style="font-size:10px;color:var(--dim);margin-top:2px">${d.date} · ${d.consequence}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>` : ''}
+
+    ${implications.length ? `
+    <div class="context-section">
+      <div class="context-header open" onclick="toggleSection(this)">IMPLICATIONS · השלכות</div>
+      <div class="context-body open">
+        ${implications.map(im => `
+          <div class="implication">
+            <span class="impl-weight ${im.type}">${im.type}</span>
+            <div class="impl-text">${im.text}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>` : ''}
+
+    ${framings.length ? `
+    <div class="context-section">
+      <div class="context-header" onclick="toggleSection(this)">FRAMING · מסגור</div>
+      <div class="context-body">
+        ${framings.map(f => `
+          <div class="framing-item">
+            <div class="frame-label">${f.label}</div>
+            <div class="frame-text">${f.text}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>` : ''}
+
+    ${deps.length ? `
+    <div class="context-section">
+      <div class="context-header" onclick="toggleSection(this)">DEPENDENCIES · תלויות</div>
+      <div class="context-body">
+        ${deps.map(d => `
+          <div class="dep-item" onclick="jumpToCase('${d.target}')">
+            <div class="dep-direction">${d.direction==='blocks'?'→':d.direction==='blocked-by'?'⊘':d.direction==='needs'?'↗':'⇄'}</div>
+            <div class="dep-info">
+              <div class="dep-label">${d.target}</div>
+              <div class="dep-detail">${d.label}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>` : ''}
+  </div>`;
+}
+
+// ─── L4: DEEP DIVE ───
+function renderL4(c) {
+  const cs = state.selectedCase || state.selectedDoc;
+  if(!cs){c.innerHTML='<div style="padding:40px;color:var(--dim);text-align:center">Select a document</div>';return}
+  state.breadcrumb = ['All Cases', cs.sv_id, 'Deep Dive'];
+
+  const pinned = state.pins.filter(p => p.sv_id === cs.sv_id);
+
+  c.innerHTML = `<div class="L4">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-size:13px;font-family:var(--mono);color:var(--gold)">${cs.case_number}</div>
+      <button onclick="processWithGemini('${cs.sv_id}')"
+        style="font-size:11px;padding:6px 12px;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:var(--gold)">
+        Process with Gemini ▸
+      </button>
+    </div>
+
+    <div style="margin-bottom:12px">
+      <div style="font-size:10px;color:var(--dim);font-family:var(--mono);margin-bottom:4px">FULL METADATA</div>
+      <div class="meta-grid" style="grid-template-columns:1fr 1fr">
+        <div class="meta-cell"><div class="meta-cell-label">SV_ID</div><div class="meta-cell-value">${cs.sv_id}</div></div>
+        <div class="meta-cell"><div class="meta-cell-label">CASE</div><div class="meta-cell-value">${cs.case_number}</div></div>
+        <div class="meta-cell"><div class="meta-cell-label">SOURCE</div><div class="meta-cell-value">${cs.source}</div></div>
+        <div class="meta-cell"><div class="meta-cell-label">TYPE</div><div class="meta-cell-value">${cs.doc_type}</div></div>
+        <div class="meta-cell"><div class="meta-cell-label">STAGE</div><div class="meta-cell-value">${cs.stage}/12</div></div>
+        <div class="meta-cell"><div class="meta-cell-label">STATUS</div><div class="meta-cell-value">${cs.status}</div></div>
+        <div class="meta-cell"><div class="meta-cell-label">URGENCY</div><div class="meta-cell-value">${cs.urgency}</div></div>
+        <div class="meta-cell"><div class="meta-cell-label">AMOUNT</div><div class="meta-cell-value">${cs.amount ? '₪'+cs.amount.toLocaleString() : '—'}</div></div>
+      </div>
+    </div>
+
+    ${pinned.length ? `
+    <div style="margin-bottom:12px">
+      <div style="font-size:10px;color:var(--gold);font-family:var(--mono);margin-bottom:4px">PINNED NOTES (${pinned.length})</div>
+      ${pinned.map((p,i) => `
+        <div style="background:var(--s1);border:1px solid var(--border);border-radius:6px;padding:8px;margin-bottom:4px;font-size:11px">
+          <div style="color:var(--mid)">${p.note}</div>
+          <button onclick="removePin(${i})" style="font-size:9px;color:var(--red);min-height:24px;margin-top:4px">remove</button>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    <div style="margin-bottom:12px">
+      <div style="font-size:10px;color:var(--dim);font-family:var(--mono);margin-bottom:4px">ADD PIN</div>
+      <div style="display:flex;gap:6px">
+        <input id="pin-input" type="text" placeholder="Note..." style="flex:1;font-size:12px;padding:8px;background:var(--s1);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:var(--mono)"/>
+        <button onclick="addPin('${cs.sv_id}')" style="padding:8px 12px;background:var(--gold);color:var(--bg);border-radius:6px;font-size:11px">Pin</button>
+      </div>
+    </div>
+
+    <div class="doc-full-text" id="doc-text">
+      ${cs.summary_he}
+
+${(cs.events||[]).map(e => `[${e.date}] ${e.title}\n${e.sub}`).join('\n\n')}
+
+${(cs.deadlines||[]).map(d => `⚠ ${d.action} — ${d.date} (${d.consequence})`).join('\n')}
+    </div>
+
+    <div id="gemini-output" style="margin-top:12px"></div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════
+// INTERACTIONS
+// ═══════════════════════════════════════════════
+
+function zoomTo(level) {
+  state.zoom = level;
+  render();
+}
+
+function selectCase(svId) {
+  state.selectedCase = state.cases.find(c => c.sv_id === svId);
+  state.zoom = 1;
+  render();
+}
+
+function selectEvent(idx) {
+  state.zoom = 3;
+  render();
+}
+
+function selectPhaseDoc(phase) {
+  state.selectedPhase = phase;
+  state.zoom = 3;
+  render();
+}
+
+function jumpToCase(svId) {
+  state.selectedCase = state.cases.find(c => c.sv_id === svId);
+  if(state.selectedCase) { state.zoom = 1; render(); }
+}
+
+function toggleSection(el) {
+  el.classList.toggle('open');
+  el.nextElementSibling.classList.toggle('open');
+}
+
+function addPin(svId) {
+  const input = document.getElementById('pin-input');
+  if(!input.value.trim()) return;
+  state.pins.push({sv_id:svId, note:input.value.trim(), ts:Date.now()});
+  localStorage.setItem('sv-pins', JSON.stringify(state.pins));
+  input.value = '';
+  render();
+}
+
+function removePin(idx) {
+  state.pins.splice(idx, 1);
+  localStorage.setItem('sv-pins', JSON.stringify(state.pins));
+  render();
+}
+
+async function processWithGemini(svId) {
+  const cs = state.cases.find(c => c.sv_id === svId);
+  if(!cs) return;
+  const out = document.getElementById('gemini-output');
+  out.innerHTML = '<div style="color:var(--gold);font-family:var(--mono);font-size:11px;padding:12px">Processing...</div>';
+
+  const docText = cs.summary_he + '\n\n' +
+    (cs.events||[]).map(e => `[${e.date}] ${e.title}: ${e.sub}`).join('\n');
+
+  try {
+    const resp = await fetch(API + '/agent/claude', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        prompt: docText,
+        system: 'אתה עוזר משפטי. סכם את המסמך ב-3 נקודות עיקריות, זהה את הסיכון המיידי, והצע צעד אחד מומלץ. JSON בלבד: {"points":["..."],"risk":"...","next_step":"..."}',
+        max_tokens: 800
+      })
+    });
+    const data = await resp.json();
+    const text = data.text || data.error || 'No response';
+    let parsed;
+    try { parsed = JSON.parse(text.replace(/```json/g,'').replace(/```/g,'').trim()); } catch(e) { parsed = null; }
+
+    if(parsed) {
+      out.innerHTML = `
+        <div style="background:var(--s1);border:1px solid var(--gold);border-radius:8px;padding:12px;margin-top:8px">
+          <div style="font-size:10px;color:var(--gold);font-family:var(--mono);margin-bottom:8px">GEMINI ANALYSIS</div>
+          ${(parsed.points||[]).map(p => `<div style="font-size:12px;color:var(--text);margin-bottom:6px;padding-right:12px;border-right:2px solid var(--border)">• ${p}</div>`).join('')}
+          <div style="margin-top:8px;font-size:11px"><strong style="color:var(--red)">RISK:</strong> <span style="color:var(--mid)">${parsed.risk||'—'}</span></div>
+          <div style="margin-top:4px;font-size:11px"><strong style="color:var(--green)">NEXT:</strong> <span style="color:var(--mid)">${parsed.next_step||'—'}</span></div>
+        </div>`;
+    } else {
+      out.innerHTML = `<div style="background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;color:var(--mid);white-space:pre-wrap;margin-top:8px">${text}</div>`;
+    }
+  } catch(e) {
+    out.innerHTML = `<div style="color:var(--red);font-size:11px;padding:8px">Error: ${e.message}</div>`;
+  }
+}
+
+// ═══════════════════════════════════════════════
+// GOOGLE SHEETS OAUTH + SETTINGS
+// ═══════════════════════════════════════════════
+
+let gTokenClient = null;
+let gAccessToken = localStorage.getItem('sv-gtoken') || null;
+
+function extractSheetId(input) {
+  if(!input) return null;
+  // Handle full URLs: https://docs.google.com/spreadsheets/d/SHEET_ID/...
+  const m = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if(m) return m[1];
+  // Handle bare IDs (no slashes)
+  if(!input.includes('/') && input.length > 10) return input.trim();
+  return null;
+}
+
+function openSettings() {
+  // Populate fields from localStorage
+  document.getElementById('gs-client-id').value = localStorage.getItem('sv-gs-client-id') || '';
+  document.getElementById('gs-sheet-id').value = localStorage.getItem('sv-gs-sheet-id') || '';
+  updateSettingsStatus();
+  document.getElementById('settings-overlay').classList.add('open');
+  document.getElementById('settings-panel').classList.add('open');
+}
+
+function closeSettings() {
+  document.getElementById('settings-overlay').classList.remove('open');
+  document.getElementById('settings-panel').classList.remove('open');
+}
+
+function updateSettingsStatus() {
+  const el = document.getElementById('gsheet-status');
+  const sheetId = localStorage.getItem('sv-gs-sheet-id');
+  if(gAccessToken && sheetId) {
+    el.className = 'settings-status connected';
+    el.textContent = 'Connected · Sheet: ' + extractSheetId(sheetId)?.slice(0,12) + '...';
+  } else if(gAccessToken) {
+    el.className = 'settings-status connected';
+    el.textContent = 'Google connected · No sheet ID set';
+  } else {
+    el.className = 'settings-status disconnected';
+    el.textContent = 'Not connected';
+  }
+  // Update connect button text
+  const btn = document.getElementById('gs-connect-btn');
+  btn.textContent = gAccessToken ? 'Re-authenticate' : 'Connect to Google';
+}
+
+function connectGoogle() {
+  const clientId = document.getElementById('gs-client-id').value.trim();
+  if(!clientId) {
+    alert('Enter a Google OAuth Client ID first');
+    return;
+  }
+  localStorage.setItem('sv-gs-client-id', clientId);
+
+  // Use Google Identity Services token model
+  gTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: clientId,
+    scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
+    callback: (response) => {
+      if(response.error) {
+        console.error('OAuth error:', response);
+        return;
+      }
+      gAccessToken = response.access_token;
+      localStorage.setItem('sv-gtoken', gAccessToken);
+      updateSettingsStatus();
+      // Auto-load if sheet ID is set
+      const sheetId = localStorage.getItem('sv-gs-sheet-id');
+      if(sheetId) loadCases();
+    }
+  });
+  gTokenClient.requestAccessToken();
+}
+
+function disconnectGoogle() {
+  gAccessToken = null;
+  localStorage.removeItem('sv-gtoken');
+  localStorage.removeItem('sv-gs-client-id');
+  localStorage.removeItem('sv-gs-sheet-id');
+  document.getElementById('gs-client-id').value = '';
+  document.getElementById('gs-sheet-id').value = '';
+  updateSettingsStatus();
+  // Revert to sample data
+  state.cases = SAMPLE_CASES;
+  render();
+}
+
+function saveSheetSettings() {
+  const clientId = document.getElementById('gs-client-id').value.trim();
+  const sheetInput = document.getElementById('gs-sheet-id').value.trim();
+  if(clientId) localStorage.setItem('sv-gs-client-id', clientId);
+  if(sheetInput) localStorage.setItem('sv-gs-sheet-id', sheetInput);
+  updateSettingsStatus();
+  closeSettings();
+  loadCases();
+}
+
+async function reloadSheet() {
+  closeSettings();
+  // Trigger backend reload
+  try {
+    await fetch(API + '/sheet/reload', {method:'POST'});
+  } catch(e) {
+    console.log('Backend reload not available:', e.message);
+  }
+  // Refresh local view
+  await loadCases();
+  const toast = document.getElementById('share-toast');
+  toast.textContent = 'Sheet reloaded';
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 2000);
+}
+
+function parseSheetRows(rows) {
+  if(!rows || rows.length < 2) return [];
+  const headers = rows[0].map(h => (h||'').toString().trim());
+  // Build column index map (case-insensitive)
+  const colIdx = {};
+  headers.forEach((h, i) => { colIdx[h.toLowerCase().replace(/\s+/g,'_')] = i; });
+
+  // Map known column names
+  const col = (row, ...names) => {
+    for(const n of names) {
+      const idx = colIdx[n.toLowerCase().replace(/\s+/g,'_')];
+      if(idx !== undefined && row[idx] !== undefined) return row[idx];
+    }
+    return '';
+  };
+
+  return rows.slice(1).filter(r => r && r.length > 0).map(r => {
+    const svId = col(r, 'SV_ID', 'sv_id', 'id', 'case_id') || ('SV-' + Math.random().toString(36).slice(2,7));
+    const stage = parseInt(col(r, 'Stage', 'stage'), 10) || 0;
+    const status = col(r, 'Status', 'status') || 'PENDING';
+    const source = col(r, 'Source', 'source') || '';
+    const docType = col(r, 'Document_Type', 'document_type', 'doc_type', 'type') || '';
+    const urgency = (col(r, 'Urgency', 'urgency') || 'medium').toLowerCase();
+    const amount = parseFloat(col(r, 'Amount', 'amount')) || 0;
+
+    return {
+      sv_id: svId, stage, status, source, doc_type: docType,
+      urgency, amount, case_number: svId,
+      parties: {petitioner: '—', respondent: source, judge: ''},
+      summary_he: `${docType} — ${source} — Stage ${stage}`,
+      summary_en: '', stakes: [], deadlines: [], events: [], dependencies: []
+    };
+  });
+}
+
+async function loadFromGoogleSheets() {
+  const sheetInput = localStorage.getItem('sv-gs-sheet-id');
+  const sheetId = extractSheetId(sheetInput);
+  if(!sheetId || !gAccessToken) return false;
+
+  try {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A:Z`;
+    const resp = await fetch(url, {
+      headers: {'Authorization': 'Bearer ' + gAccessToken}
+    });
+    if(!resp.ok) {
+      if(resp.status === 401) {
+        // Token expired, clear it
+        gAccessToken = null;
+        localStorage.removeItem('sv-gtoken');
+        console.log('Google token expired, cleared');
+      }
+      return false;
+    }
+    const data = await resp.json();
+    const parsed = parseSheetRows(data.values);
+    if(parsed.length > 0) {
+      state.cases = parsed;
+      console.log(`Loaded ${parsed.length} cases from Google Sheets`);
+      return true;
+    }
+  } catch(e) {
+    console.error('Google Sheets API error:', e);
+  }
+  return false;
+}
+
+// ═══════════════════════════════════════════════
+// DATA LOADING
+// ═══════════════════════════════════════════════
+
+async function loadCases() {
+  let loaded = false;
+
+  // 1. Try backend API first
+  try {
+    const resp = await fetch(API + '/sheet/view?density=full');
+    const data = await resp.json();
+    if(data.rows && data.rows.length) {
+      state.cases = data.rows.map(r => ({
+        sv_id: r.sv_id, stage: r.stage, status: r.status,
+        source: r.source, doc_type: r.document_type,
+        urgency: r.urgency, amount: r.amount,
+        case_number: r.sv_id,
+        parties:{petitioner:'—',respondent:r.source,judge:''},
+        summary_he: `${r.document_type} — ${r.source} — Stage ${r.stage}`,
+        summary_en: '', stakes:[], deadlines:[], events:[], dependencies:[]
+      }));
+      loaded = true;
+    }
+  } catch(e) {
+    console.log('Backend sheet API unavailable');
+  }
+
+  // 2. If backend didn't work, try direct Google Sheets API
+  if(!loaded && gAccessToken) {
+    loaded = await loadFromGoogleSheets();
+  }
+
+  // 3. Fallback to sample data
+  if(!state.cases.length) state.cases = SAMPLE_CASES;
+  render();
+}
+
+// ═══════════════════════════════════════════════
+// PWA & SHARE TARGET
+// ═══════════════════════════════════════════════
+
+// Handle share target (document received via iOS share)
+if(location.search.includes('share=')) {
+  const params = new URLSearchParams(location.search);
+  const title = params.get('title') || '';
+  const text = params.get('text') || '';
+  const url = params.get('url') || '';
+  if(title || text) {
+    const toast = document.getElementById('share-toast');
+    toast.textContent = `Received: ${title || text.slice(0,40)}`;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3000);
+    // Store shared content for processing
+    const shared = JSON.parse(localStorage.getItem('sv-shared')||'[]');
+    shared.push({title, text, url, ts:Date.now()});
+    localStorage.setItem('sv-shared', JSON.stringify(shared));
+  }
+}
+
+// ═══════════════════════════════════════════════
+// GESTURE HANDLING
+// ═══════════════════════════════════════════════
+
+let touchStartY = 0;
+let touchStartX = 0;
+document.addEventListener('touchstart', e => {
+  touchStartY = e.touches[0].clientY;
+  touchStartX = e.touches[0].clientX;
+}, {passive:true});
+
+// Two-finger pinch to zoom
+let lastPinchDist = 0;
+document.addEventListener('touchmove', e => {
+  if(e.touches.length === 2) {
+    const dx = e.touches[0].clientX - e.touches[1].clientX;
+    const dy = e.touches[0].clientY - e.touches[1].clientY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if(lastPinchDist > 0) {
+      const delta = dist - lastPinchDist;
+      if(delta > 30) { zoomTo(Math.max(0, state.zoom-1)); lastPinchDist = 0; }
+      if(delta < -30) { zoomTo(Math.min(4, state.zoom+1)); lastPinchDist = 0; }
+    }
+    lastPinchDist = dist;
+  }
+}, {passive:true});
+document.addEventListener('touchend', () => { lastPinchDist = 0; }, {passive:true});
+
+// ═══════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════
+loadCases();
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
+</script>
+</body>
+</html>

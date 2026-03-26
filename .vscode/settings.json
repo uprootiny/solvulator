@@ -1,0 +1,10 @@
+{
+  "liveServer.settings.port": 9802,
+  "liveServer.settings.root": "/static",
+  "liveServer.settings.open": "/storyboard.html",
+  "liveServer.settings.host": "0.0.0.0",
+  "files.associations": {
+    "*.edn": "clojure"
+  },
+  "editor.formatOnSave": false
+}
