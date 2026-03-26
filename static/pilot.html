@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Solvulator Pilot – Live Pipeline</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body{font-family:system-ui,-apple-system,"SF Pro"}
+  .glass{backdrop-filter:blur(12px);background:rgba(255,255,255,.05)}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1f2937;padding:12px 22px;border-radius:12px;opacity:0;transition:.3s;pointer-events:none;z-index:100}
+  .toast.show{opacity:1}
+  pre{white-space:pre-wrap;word-break:break-word}
+  .doc-input{width:100%;background:rgba(0,0,0,.3);border:1px solid #374151;border-radius:8px;padding:8px;color:#fff;font-size:12px;resize:vertical;min-height:80px;font-family:inherit}
+  .doc-input:focus{border-color:#3b82f6;outline:none}
+  .gate-badge{display:inline-block;background:#92400e;color:#fbbf24;font-size:10px;padding:1px 6px;border-radius:4px;margin-right:4px}
+  .nav-link{color:#9ca3af;text-decoration:none;font-size:12px}
+  .nav-link:hover{color:#fff}
+</style>
+</head>
+<body class="bg-[#0B0F14] text-white min-h-screen flex">
+<aside class="w-60 bg-[#11161C] p-5 flex flex-col">
+  <h1 class="text-xl font-bold mb-2">Solvulator</h1>
+  <div class="text-xs text-gray-500 mb-6">12-Agent Legal Pipeline</div>
+  <div class="space-y-2 text-sm flex-1">
+    <a href="/" class="block p-2 rounded hover:bg-[#1C2330]">Storyboard</a>
+    <div class="p-2 rounded bg-[#1C2330]">Pipeline</div>
+    <a href="/check.html" class="block p-2 rounded hover:bg-[#1C2330]">System Check</a>
+    <a href="/index.html" class="block p-2 rounded hover:bg-[#1C2330]">Classic UI</a>
+  </div>
+  <div class="text-xs text-gray-600 mt-4">
+    <div id="health-status">Checking...</div>
+  </div>
+</aside>
+
+<main class="flex-1 p-6 overflow-auto">
+  <div class="flex justify-between items-center mb-4">
+    <h2 class="text-xl font-semibold">Pipeline Runner</h2>
+    <div class="flex gap-2">
+      <select id="doc-select" class="bg-[#1C2330] text-sm rounded-lg px-3 py-2 border border-gray-700">
+        <option value="">-- Select document --</option>
+      </select>
+      <button id="start" class="bg-blue-600 hover:bg-blue-500 px-5 py-2 rounded-xl text-sm">Start Pipeline</button>
+      <button id="step" class="bg-emerald-700 hover:bg-emerald-600 px-4 py-2 rounded-xl text-sm hidden">Next Step →</button>
+      <button id="approve" class="bg-amber-700 hover:bg-amber-600 px-4 py-2 rounded-xl text-sm hidden">Approve Gate</button>
+    </div>
+  </div>
+
+  <!-- Document input -->
+  <div id="doc-panel" class="glass p-4 rounded-2xl mb-4">
+    <div class="flex justify-between items-center mb-2">
+      <h3 class="font-bold text-sm">Document Text</h3>
+      <div class="flex gap-2">
+        <label class="bg-[#1C2330] text-xs px-3 py-1.5 rounded-lg cursor-pointer hover:bg-[#2C3340]">
+          Upload PDF/TXT
+          <input type="file" accept=".pdf,.txt,.doc,.docx" class="hidden" onchange="handleFile(this)"/>
+        </label>
+      </div>
+    </div>
+    <textarea id="doc-text" class="doc-input" rows="4" placeholder="Paste document text here, upload a file, or select from dropdown..."></textarea>
+  </div>
+
+  <!-- Pipeline cards -->
+  <div id="pipeline" class="flex gap-2 overflow-x-auto pb-4 mb-4"></div>
+
+  <!-- Inspector -->
+  <div class="grid grid-cols-3 gap-4">
+    <div class="col-span-2 glass p-4 rounded-2xl">
+      <div class="flex justify-between items-center mb-2">
+        <h3 id="inspector-title" class="font-bold">Select an agent</h3>
+        <span id="inspector-ms" class="text-xs text-gray-500"></span>
+      </div>
+      <pre id="inspector" class="text-xs bg-black/40 p-3 rounded-lg max-h-[400px] overflow-auto text-gray-300">Click "Start Pipeline" to begin</pre>
+    </div>
+    <div class="glass p-4 rounded-2xl">
+      <h3 class="font-bold mb-3">Run Status</h3>
+      <div id="sys" class="text-sm text-gray-400 space-y-2">
+        <div>Waiting for input</div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div id="toast" class="toast"></div>
+
+<script>
+const API = '';
+const AGENTS = [
+  {id:'01_intake',       t:'קליטה וסיווג',             gate:true},
+  {id:'02_ocr',          t:'OCR ושלמות טקסט',           gate:true},
+  {id:'03_operative',    t:'חילוץ אופרטיבי',            gate:true},
+  {id:'04_structure',    t:'מיפוי מבנה משפטי',          gate:false},
+  {id:'05_weakness',     t:'גלאי חולשות',               gate:false},
+  {id:'06_foi',          t:'טריגר חופש מידע',            gate:false},
+  {id:'07_damage',       t:'מחשבון חשיפת נזקים',        gate:false},
+  {id:'08_strategy',     t:'בניית אסטרטגיה',            gate:true},
+  {id:'09_draft',        t:'יצירת טיוטה',               gate:true},
+  {id:'10_verify',       t:'שער אימות אנושי',           gate:true},
+  {id:'11_filing',       t:'שליחה ותיעוד',              gate:false},
+  {id:'12_meta',         t:'רישום דפוסים מערכתיים',     gate:false},
+];
+
+let runId = null;
+let runState = null;
+let completedSteps = [];
+
+// Build pipeline cards
+const pipeline = document.getElementById('pipeline');
+AGENTS.forEach((a, i) => {
+  const c = document.createElement('div');
+  c.className = 'min-w-[170px] glass p-3 rounded-xl border border-gray-700/50 opacity-40 cursor-pointer transition-all';
+  c.innerHTML = `
+    <div class="text-[10px] text-gray-500 flex items-center gap-1">
+      Agent ${String(i+1).padStart(2,'0')}
+      ${a.gate ? '<span class="gate-badge">GATE</span>' : ''}
+    </div>
+    <div class="font-bold text-[13px] mt-1">${a.t}</div>
+    <div id="st-${i}" class="mt-2 text-xs text-gray-500">locked</div>
+    <div id="pg-${i}" class="w-full h-1 bg-gray-700 rounded mt-1.5 hidden">
+      <div class="bg-blue-500 h-1 rounded transition-all" style="width:0%"></div>
+    </div>`;
+  c.onclick = () => clickAgent(i);
+  pipeline.appendChild(c);
+  if (i < AGENTS.length - 1) {
+    const arr = document.createElement('div');
+    arr.className = 'self-center text-gray-700 text-xs';
+    arr.textContent = '→';
+    pipeline.appendChild(arr);
+  }
+});
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+function setCardState(i, state, pct = 0) {
+  const card = pipeline.children[i * 2];
+  const st = document.getElementById(`st-${i}`);
+  const pg = document.getElementById(`pg-${i}`);
+  card.classList.remove('opacity-40', 'border-blue-500', 'border-green-500', 'border-amber-500', 'border-red-500');
+
+  if (state === 'running') {
+    card.classList.add('border-blue-500');
+    st.innerHTML = `<span class="text-blue-400">running… ${pct}%</span>`;
+    pg.classList.remove('hidden');
+    pg.firstElementChild.style.width = pct + '%';
+  } else if (state === 'done') {
+    card.classList.add('border-green-500');
+    st.innerHTML = '<span class="text-green-400">done</span>';
+    pg.classList.add('hidden');
+  } else if (state === 'gate') {
+    card.classList.add('border-amber-500');
+    st.innerHTML = '<span class="text-amber-400">awaiting approval</span>';
+    pg.classList.add('hidden');
+  } else if (state === 'error') {
+    card.classList.add('border-red-500');
+    st.innerHTML = '<span class="text-red-400">error</span>';
+    pg.classList.add('hidden');
+  } else {
+    card.classList.add('opacity-40');
+    st.textContent = 'locked';
+    pg.classList.add('hidden');
+  }
+}
+
+function clickAgent(i) {
+  if (i >= completedSteps.length) {
+    if (!(runState === 'paused_at_gate' && i === completedSteps.length)) return;
+  }
+  const step = completedSteps[i];
+  if (!step) return;
+  document.getElementById('inspector-title').textContent = `Agent ${String(i+1).padStart(2,'0')} – ${AGENTS[i].t}`;
+  document.getElementById('inspector-ms').textContent = step.elapsed_ms ? `${step.elapsed_ms}ms` : '';
+  document.getElementById('inspector').textContent = JSON.stringify(step.result || step, null, 2);
+}
+
+function updateSys() {
+  const sys = document.getElementById('sys');
+  const parts = [];
+  if (runId) parts.push(`<div class="text-xs font-mono text-gray-600">${runId}</div>`);
+  parts.push(`<div>Steps: ${completedSteps.length} / 12</div>`);
+  if (runState === 'paused_at_gate') {
+    parts.push(`<div class="text-amber-400">Waiting: human gate approval</div>`);
+  } else if (runState === 'completed') {
+    parts.push(`<div class="text-green-400">Pipeline complete</div>`);
+  } else if (runState === 'running') {
+    parts.push(`<div class="text-blue-400">Running...</div>`);
+  }
+  sys.innerHTML = parts.join('');
+}
+
+// ── Start pipeline ──
+document.getElementById('start').onclick = async () => {
+  const docText = document.getElementById('doc-text').value.trim();
+  if (!docText) { toast('Enter document text first'); return; }
+
+  // Reset
+  completedSteps = [];
+  runState = 'starting';
+  AGENTS.forEach((_, i) => setCardState(i, 'locked'));
+  document.getElementById('inspector').textContent = 'Starting pipeline...';
+  document.getElementById('step').classList.add('hidden');
+  document.getElementById('approve').classList.add('hidden');
+
+  try {
+    const resp = await fetch(API + '/pipeline/start', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({doc_text: docText})
+    });
+    const data = await resp.json();
+    if (data.error) { toast('Error: ' + data.error); return; }
+    runId = data.run_id;
+    runState = 'pending';
+    updateSys();
+    toast('Pipeline started: ' + runId);
+    // Auto-run first step
+    await runStep();
+  } catch (e) {
+    toast('Failed to start: ' + e.message);
+  }
+};
+
+// ── Run next step ──
+async function runStep() {
+  if (!runId) return;
+  const stepIdx = completedSteps.length;
+  if (stepIdx >= 12) { runState = 'completed'; updateSys(); return; }
+
+  setCardState(stepIdx, 'running', 10);
+  runState = 'running';
+  updateSys();
+
+  // Animate progress
+  let pct = 10;
+  const iv = setInterval(() => {
+    pct = Math.min(90, pct + Math.random() * 15);
+    setCardState(stepIdx, 'running', Math.round(pct));
+  }, 500);
+
+  try {
+    const resp = await fetch(API + `/pipeline/${runId}/step`, {method: 'POST'});
+    clearInterval(iv);
+    const data = await resp.json();
+
+    if (data.error) {
+      setCardState(stepIdx, 'error');
+      document.getElementById('inspector').textContent = JSON.stringify(data, null, 2);
+      toast('Error at step ' + (stepIdx + 1));
+      return;
+    }
+
+    setCardState(stepIdx, 'done');
+    completedSteps.push(data);
+    clickAgent(stepIdx);
+
+    // Check for gate
+    if (data.next_gate) {
+      setCardState(stepIdx + 1, 'gate');
+      runState = 'paused_at_gate';
+      document.getElementById('approve').classList.remove('hidden');
+      document.getElementById('step').classList.add('hidden');
+      toast(`Gate: ${data.next_gate.agent_name} requires approval`);
+    } else if (stepIdx + 1 < 12) {
+      // Auto-advance non-gate agents
+      document.getElementById('step').classList.remove('hidden');
+      document.getElementById('approve').classList.add('hidden');
+      runState = 'ready';
+      // Auto-run next step after brief pause
+      setTimeout(runStep, 300);
+    } else {
+      runState = 'completed';
+      document.getElementById('step').classList.add('hidden');
+      toast('Pipeline complete!');
+    }
+    updateSys();
+  } catch (e) {
+    clearInterval(iv);
+    setCardState(stepIdx, 'error');
+    toast('Step failed: ' + e.message);
+  }
+}
+
+// ── Approve gate ──
+document.getElementById('approve').onclick = async () => {
+  try {
+    const resp = await fetch(API + `/pipeline/${runId}/approve`, {method: 'POST'});
+    const data = await resp.json();
+    if (data.approved) {
+      const gateIdx = completedSteps.length;
+      setCardState(gateIdx, 'locked'); // Reset gate card
+      document.getElementById('approve').classList.add('hidden');
+      toast('Gate approved — continuing');
+      await runStep();
+    }
+  } catch (e) { toast('Approve failed: ' + e.message); }
+};
+
+document.getElementById('step').onclick = runStep;
+
+// ── File upload ──
+async function handleFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const text = await file.text();
+  document.getElementById('doc-text').value = text;
+  toast('Loaded: ' + file.name);
+}
+
+// ── Load documents from backend ──
+async function loadDocs() {
+  try {
+    const resp = await fetch(API + '/doc/list');
+    const data = await resp.json();
+    const select = document.getElementById('doc-select');
+    (data.documents || []).forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.doc_id;
+      opt.textContent = `${d.filename} (${(d.size/1024).toFixed(0)}KB) ${d.sv_id ? '· '+d.sv_id : ''}`;
+      select.appendChild(opt);
+    });
+  } catch(e) {}
+}
+
+document.getElementById('doc-select').onchange = async function() {
+  const docId = this.value;
+  if (!docId) return;
+  try {
+    const resp = await fetch(API + '/doc/' + docId);
+    const type = resp.headers.get('Content-Type') || '';
+    if (type.includes('text') || type.includes('json')) {
+      document.getElementById('doc-text').value = await resp.text();
+      toast('Loaded document');
+    } else {
+      toast('PDF/binary — text extraction needed. Use "Analyze" from storyboard.');
+    }
+  } catch(e) { toast('Failed to load: ' + e.message); }
+};
+
+// ── Health check ──
+async function checkHealth() {
+  try {
+    const r = await fetch(API + '/health');
+    const d = await r.json();
+    const keys = [d.anthropic && 'Anthropic', d.gemini && 'Gemini', d.openrouter && 'OpenRouter'].filter(Boolean);
+    document.getElementById('health-status').innerHTML =
+      `<div class="text-green-500">● Online</div>` +
+      `<div class="text-gray-500 mt-1">Keys: ${keys.join(', ') || 'none'}</div>` +
+      `<div class="text-gray-500">Sheet: ${d.sheet_state}</div>`;
+  } catch(e) {
+    document.getElementById('health-status').innerHTML = '<div class="text-red-500">● Offline</div>';
+  }
+}
+
+// ── Init ──
+checkHealth();
+loadDocs();
+
+// Pre-fill with sample Hebrew legal text
+if (!document.getElementById('doc-text').value) {
+  document.getElementById('doc-text').value =
+    'בבית המשפט המחוזי בירושלים\nע"ר 58022-09-25\n\nהעותר: פרופ\' אברהם ארליך\nנגד\nהמשיבה: עיריית ירושלים\n\nהחלטה\n\nלאחר עיון בטענות הצדדים, ובשים לב לכך שהערעור הוגש באיחור ניכר של כ-50 יום לאחר המועד הסטטוטורי, ולא הוצגו טעמים מיוחדים כנדרש:\n\n1. הערעור נמחק.\n2. המבקש יישא בהוצאות המשיבה בסך 2,500 ₪.\n\nניתנה היום, 18.02.2026\nכב\' השופט ערן שילה';
+}
+</script>
+</body>
+</html>

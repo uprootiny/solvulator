@@ -904,7 +904,7 @@ class Handler(BaseHTTPRequestHandler):
                 })
         elif path == "/index.html":
             self.serve_static("index.html")
-        elif path in ("/manifest.json", "/sw.js", "/check.html"):
+        elif path in ("/manifest.json", "/sw.js", "/check.html", "/pilot.html"):
             self.serve_static(path.lstrip("/"))
         elif path.startswith("/static/"):
             self.serve_static(path[8:])
