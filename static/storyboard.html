@@ -676,6 +676,16 @@ function renderL1(c) {
   if(!cs){c.innerHTML='<div style="padding:40px;color:var(--dim);text-align:center">Select a case from L0 Weave</div>';return}
   state.breadcrumb = ['All Cases', cs.sv_id];
   const events = cs.events || [];
+  const noEvents = events.length === 0;
+
+  // Date-proportional gap calculation
+  const gaps = events.map((ev,i) => {
+    if(i===0) return 0;
+    const d1 = new Date(events[i-1].date||0), d2 = new Date(ev.date||0);
+    const days = Math.max(1, Math.round((d2-d1)/(86400000)));
+    return Math.min(40, Math.max(0, Math.log2(days)*6)); // log-scale gap, max 40px
+  });
+
   c.innerHTML = `
     <div style="padding:8px 0 12px">
       <div style="font-size:15px;color:var(--text)">${cs.case_number}</div>
@@ -684,22 +694,54 @@ function renderL1(c) {
         ${(cs.stakes||[]).map(s=>`<span class="stake-tag ${s}">${s}</span>`).join('')}
         ${docBadgeHtml(cs.sv_id)}
       </div>
+      ${cs.plaintiff_strategy ? `<div style="margin-top:8px;font-size:11px;color:var(--mid);border-right:2px solid var(--green);padding-right:8px">
+        <span style="color:var(--dim);font-family:var(--mono);font-size:9px">STRATEGY</span><br/>${cs.plaintiff_strategy.slice(0,200)}${cs.plaintiff_strategy.length>200?'…':''}
+      </div>` : ''}
     </div>
+    ${noEvents ? `<div style="padding:20px;text-align:center;color:var(--dim)">
+      <div style="font-size:24px;margin-bottom:8px">&#x23F3;</div>
+      <div style="font-size:12px">No timeline events yet</div>
+      <div style="font-size:11px;color:var(--faint);margin-top:4px">Stage ${cs.stage}/12 · ${cs.status}</div>
+      <button onclick="zoomTo(3)" style="margin-top:12px;padding:8px 16px;background:var(--s2);border:1px solid var(--border);border-radius:6px;color:var(--gold);font-size:11px">View Document Context →</button>
+    </div>` : `
     <div class="L1" style="position:relative">
       <div class="timeline-spine"></div>
       ${events.map((ev,i) => `
-        <div class="tl-event slide-up" style="animation-delay:${i*50}ms"
-             onclick="selectEvent(${i})">
+        <div class="tl-event slide-up" style="animation-delay:${i*50}ms;margin-top:${gaps[i]||0}px"
+             onclick="expandEvent(this,${i})" data-idx="${i}">
           <div class="tl-dot ${ev.type}"></div>
-          <div class="tl-date">${ev.date}</div>
+          <div class="tl-date">${ev.date}${i>0 && gaps[i]>10 ? ' <span style="color:var(--faint);font-size:8px">+'+ Math.round(Math.pow(2,gaps[i]/6)) +'d</span>':''}</div>
           <div class="tl-title">${ev.title}</div>
           <div class="tl-sub">${ev.sub}</div>
           ${ev.implications ? `<div class="tl-deps">${ev.implications.map(im =>
             `<span class="tl-dep" style="color:var(--${im.type==='opens'?'green':im.type==='closes'?'red':im.type==='shifts'?'gold':'purple'})">${im.type}</span>`
           ).join('')}</div>` : ''}
+          <div class="tl-expand" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+            ${ev.implications ? ev.implications.map(im => `
+              <div style="font-size:11px;margin-bottom:4px">
+                <span class="impl-weight ${im.type}">${im.type}</span>
+                <span style="color:var(--mid);margin-right:4px">${im.text}</span>
+              </div>`).join('') : ''}
+            ${ev.framing ? ev.framing.map(f => `
+              <div style="font-size:10px;margin-bottom:4px">
+                <span style="color:var(--dim);font-family:var(--mono)">${f.label}</span><br/>
+                <span style="color:var(--mid)">${f.text}</span>
+              </div>`).join('') : ''}
+            <button onclick="event.stopPropagation();state.selectedEvent=${i};zoomTo(3)" style="font-size:10px;padding:4px 10px;background:var(--s2);border:1px solid var(--border);border-radius:4px;color:var(--gold);margin-top:4px">Drill into context →</button>
+          </div>
         </div>
       `).join('')}
-    </div>`;
+    </div>`}`;
+}
+
+function expandEvent(el, idx) {
+  // Toggle expand on the clicked event
+  const exp = el.querySelector('.tl-expand');
+  if(!exp) { selectEvent(idx); return; }
+  const isOpen = exp.style.display !== 'none';
+  // Close all others
+  document.querySelectorAll('.tl-expand').forEach(e => e.style.display='none');
+  if(!isOpen) exp.style.display = 'block';
 }
 
 // ─── L2: PHASE ───
@@ -1657,15 +1699,51 @@ async function loadCases() {
     const resp = await fetch(API + '/sheet/view?density=full');
     const data = await resp.json();
     if(data.rows && data.rows.length) {
-      state.cases = data.rows.map(r => ({
-        sv_id: r.sv_id, stage: r.stage, status: r.status,
-        source: r.source, doc_type: r.document_type,
-        urgency: r.urgency, amount: r.amount,
-        case_number: r.sv_id,
-        parties:{petitioner:'—',respondent:r.source,judge:''},
-        summary_he: `${r.document_type} — ${r.source} — Stage ${r.stage}`,
-        summary_en: '', stakes:[], deadlines:[], events:[], dependencies:[]
-      }));
+      state.cases = data.rows.map(r => {
+        // Check if SAMPLE_CASES has a rich version of this case
+        const sample = SAMPLE_CASES.find(s => s.sv_id === r.sv_id);
+        if(sample) {
+          // Merge: sheet data enriches sample (fresh status/stage from sheet)
+          return {...sample, stage: r.stage ?? sample.stage, status: r.status || sample.status,
+                  urgency: r.urgency || sample.urgency, amount: r.amount ?? sample.amount};
+        }
+        // Auto-generate timeline from metadata
+        const events = [];
+        const today = new Date().toISOString().slice(0,10);
+        if(r.stage >= 1) events.push({date:today, type:'procedural', title:`Stage ${r.stage}/12 — ${r.status}`,
+          sub:`${r.document_type || 'Document'} from ${r.source || '?'}`});
+        if(r.plaintiff_deadline) events.push({date:r.plaintiff_deadline, type:'critical',
+          title:'Plaintiff deadline', sub:r.plaintiff_deadline});
+        if(r.defendant_deadline) events.push({date:r.defendant_deadline, type:'critical',
+          title:'Defendant deadline', sub:r.defendant_deadline});
+        if(r.decision) events.push({date:today, type:'adverse', title:'Decision', sub:r.decision.slice(0,120)});
+        // Auto-generate stakes from fields
+        const stakes = [];
+        if(r.amount > 0) stakes.push('fee');
+        if((r.source||'').includes('HCJ')||/בג.ץ/.test(r.source||'')) stakes.push('constitutional');
+        if(/הוצ/.test(r.source||'')) stakes.push('access');
+
+        return {
+          sv_id: r.sv_id, stage: r.stage, status: r.status,
+          source: r.source, doc_type: r.document_type,
+          urgency: r.urgency, amount: r.amount,
+          case_number: r.case_name || r.sv_id,
+          parties:{petitioner: r.plaintiff||'—', respondent: r.defendant||r.source||'—', judge:''},
+          summary_he: r.decision || `${r.document_type||''} — ${r.source||''} — Stage ${r.stage}`,
+          summary_en: '', stakes, events,
+          deadlines: [
+            r.plaintiff_deadline ? {action:'Plaintiff deadline',date:r.plaintiff_deadline,days_remaining:0,consequence:'—'} : null,
+            r.defendant_deadline ? {action:'Defendant deadline',date:r.defendant_deadline,days_remaining:0,consequence:'—'} : null,
+          ].filter(Boolean),
+          dependencies: [],
+          plaintiff_strategy: r.plaintiff_strategy || '',
+          defendant_strategy: r.defendant_strategy || '',
+        };
+      });
+      // Also add any SAMPLE_CASES not in sheet data
+      SAMPLE_CASES.forEach(s => {
+        if(!state.cases.find(c => c.sv_id === s.sv_id)) state.cases.push(s);
+      });
       loaded = true;
     }
   } catch(e) {
