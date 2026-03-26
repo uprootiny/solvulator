@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-system.py — SOLVULATOR Unified Backend v0.4
+system.py — SOLVULATOR Unified Backend v0.5
 Single entrypoint. All services mounted. No framework.
 
 Mounts:
@@ -10,38 +10,33 @@ Mounts:
   /sheet/view                     density-filtered rows (GET ?density=focused&status=&urgency=)
   /sheet/snapshot                 full immutable snapshot
   /sheet/reload                   re-fetch source (POST)
-  /catalog                        payment tier catalog
-  /intent                         payment intent (POST)
-  /token/mint                     mint scoped token (POST)
-  /token/check                    validate token (GET)
-  /token/revoke                   revoke token (POST)
-  /protected/pipeline-state       token-gated pipeline state
   /agent/claude                   LLM proxy — hides API key (POST)
-  /agent/lathe                    LATHE pre-pass proxy (POST)
-  /lathe/process                  alias of /agent/lathe
+  /agent/gemini                   Gemini LLM proxy (POST)
+  /pipeline/start                 start 12-agent pipeline (POST)
+  /pipeline/runs                  list pipeline runs (GET)
+  /doc/upload                     upload document (POST)
+  /doc/list                       list documents (GET)
+  /drive/list                     list Drive folder (GET)
+  /drive/import                   import from Drive (POST)
+  /integration/status             Apps Script integration status (GET)
   /                               serves storyboard.html (GET)
-  /index.html                     serves solvulator v0.4 UI (GET)
+  /index.html                     serves solvulator UI (GET)
   /static/*                       static file passthrough
 
 Usage:
   python3 src/system.py
-  SHEET_URL=... ANTHROPIC_API_KEY=sk-... python3 src/system.py
+  SHEET_URL=... GEMINI_API_KEY=... python3 src/system.py
   python3 src/system.py test
-  python3 src/system.py loop [--dry]
 """
 
 import base64
-import csv
 import hashlib
-import hmac
-import io
 import json
 import mimetypes
 import os
 import re
 import sys
 import time
-import uuid
 import urllib.request
 import urllib.error
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -56,10 +51,7 @@ from urllib.parse import urlparse, parse_qs
 PORT             = int(os.environ.get("PORT", 9800))
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 SHEET_URL        = os.environ.get("SHEET_URL", "")
-PILOT_MODE       = os.environ.get("PILOT_MODE", "true").lower() == "true"
-TOKEN_SECRET     = os.environ.get("TOKEN_SECRET", "solvulator-system-secret-change-in-prod")
 STATIC_DIR       = os.environ.get("STATIC_DIR", str(Path(__file__).resolve().parent.parent / "static"))
-CLAUDE_MODEL     = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-20250514")
 VERSION          = "0.4.0"
 SERVICE_ID       = "solvulator-system"
 
@@ -133,7 +125,7 @@ COLUMN_ALIASES   = {
 }
 VALID_STATUSES   = {"PENDING", "RUNNING", "DONE", "BLOCKED", "N/A"}
 VALID_URGENCIES  = {"high", "medium", "low", ""}
-VALID_SCOPES     = {"PILOT", "EXPORT", "DISPATCH", "ADMIN"}
+
 
 # ══════════════════════════════════════════════════════
 # 2. INVARIANT ASSERTIONS
@@ -352,53 +344,6 @@ class SheetEngine:
 
 SHEET = SheetEngine()
 
-# ══════════════════════════════════════════════════════
-# 4. TOKEN ENGINE
-# ══════════════════════════════════════════════════════
-
-TOKEN_STORE = {}
-
-def mint_token(scope, meta=None):
-    if scope not in VALID_SCOPES:
-        raise ValueError(f"Invalid scope: {scope}. Valid: {sorted(VALID_SCOPES)}")
-    token_id = "PILOT-" + uuid.uuid4().hex[:10].upper()
-    issued_at = int(time.time())
-    expires_at = issued_at + 7 * 24 * 3600
-    payload = f"{token_id}:{scope}:{issued_at}"
-    sig = hmac.new(TOKEN_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()[:16]
-    token = f"{token_id}.{sig}"
-    record = {
-        "token": token, "token_id": token_id, "scope": scope,
-        "issued_at": issued_at, "expires_at": expires_at,
-        "pilot_mode": PILOT_MODE, "meta": meta or {}, "revoked": False,
-    }
-    TOKEN_STORE[token] = record
-    return record
-
-def check_token(token, required_scope=None):
-    if not token:
-        return False, {}, "No token provided"
-    record = TOKEN_STORE.get(token)
-    if not record:
-        return False, {}, "Token not found"
-    if record["revoked"]:
-        return False, record, "Token revoked"
-    if int(time.time()) > record["expires_at"]:
-        return False, record, "Token expired"
-    if required_scope and record["scope"] != "ADMIN":
-        order = {"PILOT": 1, "EXPORT": 2, "DISPATCH": 3, "ADMIN": 4}
-        if order.get(record["scope"], 0) < order.get(required_scope, 0):
-            return False, record, f"Insufficient scope: have {record['scope']}, need {required_scope}"
-    return True, record, "ok"
-
-CATALOG = [
-    {"id": "pilot", "scope": "PILOT", "price_ILS": 0, "name": "Pilot",
-     "features": ["LATHE Stage 0", "12-agent pipeline", "Timeline", "Read-only"]},
-    {"id": "export", "scope": "EXPORT", "price_ILS": 49, "name": "Export",
-     "features": ["All pilot", "JSON export", "PDF report"]},
-    {"id": "dispatch", "scope": "DISPATCH", "price_ILS": 149, "name": "Dispatch",
-     "features": ["All export", "Net HaMishpat filing", "Registered mail", "Receipts"]},
-]
 
 # ══════════════════════════════════════════════════════
 # 5. AGENT PROXY
@@ -454,7 +399,7 @@ def call_claude(prompt, system="", max_tokens=1000):
 
 def _call_anthropic(prompt, system="", max_tokens=1000):
     messages = [{"role": "user", "content": prompt}]
-    body = {"model": CLAUDE_MODEL, "max_tokens": max_tokens, "messages": messages}
+    body = {"model": "claude-sonnet-4-20250514", "max_tokens": max_tokens, "messages": messages}
     if system:
         body["system"] = system
     payload = json.dumps(body).encode("utf-8")
@@ -508,66 +453,7 @@ def _call_openrouter(prompt, system="", max_tokens=1000):
     except Exception as e:
         return {"error": str(e)}
 
-def call_lathe(doc_text, goal="", lang="Hebrew"):
-    prompt = f"""You are LATHE Stage 0 — legal argument decomposition engine.
-Taxonomy: distortion (overbroad framing), projection (inferred mental state without evidence),
-fixation (single-theory dependency), assertion (unsupported factual claim).
-OUTPUT LANGUAGE: {lang}
-Return ONLY valid JSON. No markdown fences. Schema:
-{{
-  "facts":[{{"id":"f1","text":"string","source":"document","importance":0.8,"status":"stated"}}],
-  "claims":[{{"id":"c1","text":"string","type":"factual|normative|mixed","support_score":0.5,"scope_score":0.5,"fragility_score":0.5}}],
-  "failure_analysis":[{{"claim_id":"c1","failures":[{{"type":"distortion|projection|fixation|assertion","reason":"string","location":"string","severity":"fatal|significant|minor","challenge_question":"string"}}]}}],
-  "repairs":[{{"claim_id":"c1","original":"string","repaired":"string","repair_strategy":"narrowing|evidential_conditioning|alternative_theory|hedging"}}],
-  "counterarguments":[{{"claim_id":"c1","text":"string","strength":0.7,"applicable_doctrine":"string"}}],
-  "lathe_summary":"2-sentence assessment",
-  "litigation_integrity_score":0.6
-}}
-INDIVIDUAL GOAL: {goal}
-DOCUMENT:
-{doc_text[:3000]}"""
-    result = call_claude(prompt, max_tokens=1500)
-    if "error" in result:
-        return result
-    try:
-        clean = result["text"].replace("```json", "").replace("```", "").strip()
-        return json.loads(clean)
-    except json.JSONDecodeError as e:
-        return {"error": f"LATHE JSON parse failed: {e}", "raw": result["text"][:200]}
 
-# ══════════════════════════════════════════════════════
-# 6. AGENT LOOP
-# ══════════════════════════════════════════════════════
-
-def run_agent_loop(dry_run=False):
-    if SHEET.state != "ready":
-        print("  agent loop: sheet not ready")
-        return []
-    pending = [r["row"] for r in SHEET.snapshot["valid"] if r["row"].get("status") == "PENDING"]
-    print(f"  agent loop: {len(pending)} pending rows")
-    results = []
-    for row in pending:
-        sv_id = row.get("sv_id", "?")
-        doc_text = row.get("clean_text", "")
-        if not doc_text:
-            print(f"    {sv_id}: no text — skipping")
-            continue
-        if dry_run:
-            print(f"    {sv_id}: DRY RUN — would call LATHE on {len(doc_text)} chars")
-            results.append({"sv_id": sv_id, "dry_run": True})
-            continue
-        print(f"    {sv_id}: calling LATHE...")
-        lathe = call_lathe(doc_text, goal=row.get("goal", ""))
-        result = {
-            "sv_id": sv_id, "status": row.get("status"),
-            "urgency": row.get("urgency"), "lathe": lathe,
-            "processed_at": int(time.time()),
-        }
-        results.append(result)
-        score = lathe.get("litigation_integrity_score", "?")
-        n_failures = sum(len(fa.get("failures", [])) for fa in lathe.get("failure_analysis", []))
-        print(f"    {sv_id}: integrity={score} failures={n_failures}")
-    return results
 
 # ══════════════════════════════════════════════════════
 # 6b. PIPELINE ENGINE (12-agent legal pipeline)
@@ -861,12 +747,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         routes = {
             "/health": self.h_health, "/manifest": self.h_manifest,
-            "/catalog": self.h_catalog, "/token/check": self.h_token_check,
             "/sheet/state": self.h_sheet_state, "/sheet/view": self.h_sheet_view,
             "/sheet/snapshot": self.h_sheet_snapshot,
-            "/legal/cases": self.h_legal_cases,
-            "/protected/pipeline-state": self.h_pipeline_state,
-            "/api/loop/status": self.h_loop_status_get,
             "/pipeline/runs": self.h_pipeline_list,
             "/doc/list": self.h_doc_list,
             "/drive/list": self.h_drive_list,
@@ -891,9 +773,8 @@ class Handler(BaseHTTPRequestHandler):
                     "service": SERVICE_ID, "version": VERSION,
                     "status": "ready",
                     "endpoints": {
-                        "health": "/health", "manifest": "/manifest", "catalog": "/catalog",
+                        "health": "/health", "manifest": "/manifest",
                         "claude": "POST /agent/claude", "gemini": "POST /agent/gemini",
-                        "lathe": "POST /agent/lathe", "mint": "POST /token/mint",
                         "sheet": "/sheet/view",
                     },
                     "keys": {"anthropic": bool(ANTHROPIC_API_KEY), "gemini": bool(GEMINI_API_KEY), "openrouter": bool(OPENROUTER_KEY)},
@@ -914,12 +795,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         routes = {
-            "/intent": self.h_intent, "/token/mint": self.h_token_mint,
-            "/token/revoke": self.h_token_revoke, "/sheet/reload": self.h_sheet_reload,
+            "/sheet/reload": self.h_sheet_reload,
             "/agent/claude": self.h_agent_claude, "/agent/gemini": self.h_agent_gemini,
-            "/agent/lathe": self.h_agent_lathe, "/lathe/process": self.h_agent_lathe,
-            "/api/key": self.h_api_key, "/api/loop/start": self.h_loop_start,
-            "/api/loop/status": self.h_loop_status,
             "/pipeline/start": self.h_pipeline_start,
             "/doc/upload": self.h_doc_upload,
             "/doc/from-url": self.h_doc_from_url,
@@ -950,7 +827,7 @@ class Handler(BaseHTTPRequestHandler):
     def h_health(self):
         self.send_json({
             "ok": True, "service": SERVICE_ID, "version": VERSION,
-            "pilot_mode": PILOT_MODE, "sheet_state": SHEET.state,
+            "sheet_state": SHEET.state,
             "anthropic": bool(ANTHROPIC_API_KEY),
             "gemini": bool(GEMINI_API_KEY),
             "openrouter": bool(OPENROUTER_KEY),
@@ -964,81 +841,26 @@ class Handler(BaseHTTPRequestHandler):
             "endpoints": [
                 {"method": "GET", "path": "/health"},
                 {"method": "GET", "path": "/manifest"},
-                {"method": "GET", "path": "/catalog"},
-                {"method": "POST", "path": "/intent"},
-                {"method": "POST", "path": "/token/mint"},
-                {"method": "GET", "path": "/token/check"},
-                {"method": "POST", "path": "/token/revoke"},
                 {"method": "GET", "path": "/sheet/state"},
                 {"method": "GET", "path": "/sheet/view", "params": "density status urgency"},
                 {"method": "GET", "path": "/sheet/snapshot"},
                 {"method": "POST", "path": "/sheet/reload"},
-                {"method": "GET", "path": "/protected/pipeline-state", "auth": "PILOT"},
                 {"method": "POST", "path": "/agent/claude"},
-                {"method": "POST", "path": "/agent/lathe"},
+                {"method": "POST", "path": "/agent/gemini"},
+                {"method": "POST", "path": "/pipeline/start"},
+                {"method": "GET", "path": "/pipeline/runs"},
+                {"method": "POST", "path": "/doc/upload"},
+                {"method": "GET", "path": "/doc/list"},
+                {"method": "GET", "path": "/drive/list"},
+                {"method": "POST", "path": "/drive/import"},
+                {"method": "GET", "path": "/integration/status"},
             ],
             "invariants": [
                 "No API key in browser",
                 "No silent failure",
                 "No partial state",
-                "No implicit auth",
             ],
         })
-
-    def h_catalog(self):
-        self.send_json({"catalog": CATALOG, "currency": "ILS", "pilot_mode": PILOT_MODE})
-
-    def h_intent(self):
-        body = self.read_body()
-        scope = body.get("scope", "PILOT").upper()
-        tier = next((c for c in CATALOG if c["scope"] == scope), None)
-        if not tier:
-            self.send_err(f"Unknown scope: {scope}", 400); return
-        if tier["price_ILS"] == 0 or PILOT_MODE:
-            record = mint_token(scope, meta={"tier": tier["id"]})
-            self.send_json({
-                "intent_id": "FREE-" + uuid.uuid4().hex[:8].upper(),
-                "status": "fulfilled", "token": record["token"],
-                "scope": record["scope"], "expires_at": record["expires_at"], "tier": tier,
-            })
-        else:
-            self.send_json({
-                "intent_id": "INTENT-" + uuid.uuid4().hex[:8].upper(),
-                "status": "pending_payment", "scope": scope,
-                "price_ILS": tier["price_ILS"],
-            })
-
-    def h_token_mint(self):
-        body = self.read_body()
-        scope = body.get("scope", "PILOT").upper()
-        meta = body.get("meta", {})
-        try:
-            record = mint_token(scope, meta=meta)
-            self.send_json({
-                "token": record["token"], "scope": record["scope"],
-                "issued_at": record["issued_at"], "expires_at": record["expires_at"],
-                "pilot_mode": record["pilot_mode"],
-            })
-        except ValueError as e:
-            self.send_err(str(e), 400)
-
-    def h_token_check(self):
-        token = self.get_token()
-        scope = self.get_params().get("scope")
-        valid, record, reason = check_token(token, scope)
-        if valid:
-            self.send_json({"valid": True, "scope": record["scope"], "expires_at": record["expires_at"]})
-        else:
-            self.send_json({"valid": False, "reason": reason}, 401 if not record else 403)
-
-    def h_token_revoke(self):
-        body = self.read_body()
-        token = body.get("token", self.get_token())
-        record = TOKEN_STORE.get(token)
-        if not record:
-            self.send_err("Token not found", 404); return
-        record["revoked"] = True
-        self.send_json({"revoked": True})
 
     def h_sheet_state(self):
         self.send_json(SHEET.state_summary())
@@ -1076,70 +898,6 @@ class Handler(BaseHTTPRequestHandler):
         threading.Thread(target=SHEET.load, args=(src,), daemon=True).start()
         self.send_json({"reloading": True, "source": src})
 
-    # ── Legal Cases (from Gmail pipeline Google Sheet) ──
-
-    _legal_cache = {"rows": [], "ts": 0}
-
-    def h_legal_cases(self):
-        import csv, io, time
-        now = time.time()
-        cache = type(self)._legal_cache
-        # cache for 60s
-        if now - cache["ts"] > 60 or not cache["rows"]:
-            try:
-                req = urllib.request.Request(LEGAL_SHEET_URL, headers={"User-Agent": "solvulator/1"})
-                with urllib.request.urlopen(req, timeout=15) as resp:
-                    raw = resp.read().decode("utf-8")
-                reader = csv.reader(io.StringIO(raw))
-                headers_row = next(reader, None)
-                if not headers_row:
-                    self.send_json({"cases": [], "error": "empty sheet"}); return
-                # Fixed columns from the Apps Script
-                FIXED = ["case_number", "case_name", "plaintiff", "defendant",
-                         "plaintiff_lawyer", "defendant_lawyer", "case_type", "status",
-                         "decision", "plaintiff_deadline", "defendant_deadline",
-                         "plaintiff_strategy", "defendant_strategy", "exhibits_count"]
-                rows = []
-                for row in reader:
-                    if not any(row):
-                        continue
-                    case = {}
-                    for i, key in enumerate(FIXED):
-                        case[key] = row[i] if i < len(row) else ""
-                    # Dynamic columns after fixed: pairs of (description, link)
-                    extra = row[len(FIXED):]
-                    exhibits, facts = [], []
-                    # First batch = exhibits, second = facts (from Apps Script writeToSheet)
-                    exhibit_count = int(case.get("exhibits_count") or 0)
-                    idx = 0
-                    for _ in range(exhibit_count):
-                        if idx + 1 < len(extra):
-                            exhibits.append({"description": extra[idx], "link": extra[idx + 1]})
-                            idx += 2
-                    # Rest are facts
-                    while idx + 1 < len(extra):
-                        facts.append({"description": extra[idx], "link": extra[idx + 1]})
-                        idx += 2
-                    case["exhibits"] = exhibits
-                    case["facts"] = facts
-                    rows.append(case)
-                cache["rows"] = rows
-                cache["ts"] = now
-            except Exception as e:
-                self.send_json({"cases": cache["rows"], "error": str(e), "stale": True}); return
-        self.send_json({"cases": cache["rows"], "count": len(cache["rows"])})
-
-    def h_pipeline_state(self):
-        token = self.get_token()
-        valid, record, reason = check_token(token, "PILOT")
-        if not valid:
-            self.send_json({"valid": False, "reason": reason}, 401 if not record else 403); return
-        self.send_json({
-            "scope": record["scope"], "sheet": SHEET.state_summary(),
-            "agent": {"claude_model": CLAUDE_MODEL, "api_key_set": bool(ANTHROPIC_API_KEY) or bool(OPENROUTER_KEY)},
-            "tokens": {"total": len(TOKEN_STORE)},
-        })
-
     def h_agent_claude(self):
         body = self.read_body()
         prompt = body.get("prompt", "")
@@ -1152,106 +910,6 @@ class Handler(BaseHTTPRequestHandler):
         result = call_claude(prompt, system=system, max_tokens=max_tokens)
         self.send_json(result, 200 if "error" not in result else 502)
 
-    # ── API KEY INGESTION ─────────────────────────────────────
-    def h_api_key(self):
-        """Accept API key via web UI. Stores in memory + appends to ~/.env.openrouter."""
-        global ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENROUTER_KEY
-        body = self.read_body()
-        key = body.get("key", "").strip()
-        provider = body.get("provider", "auto")
-        if not key:
-            self.send_err("key required", 400); return
-
-        # Auto-detect provider from key format
-        if provider == "auto":
-            if key.startswith("sk-ant-"):
-                provider = "anthropic"
-            elif key.startswith("AIza"):
-                provider = "gemini"
-            elif key.startswith("sk-or-"):
-                provider = "openrouter"
-            elif key.startswith("4/") or key.startswith("ya29."):
-                provider = "gemini_oauth"
-            else:
-                provider = "openrouter"  # default fallback
-
-        # Store in memory
-        env_line = ""
-        if provider == "anthropic":
-            ANTHROPIC_API_KEY = key
-            env_line = f"ANTHROPIC_API_KEY={key}"
-        elif provider in ("gemini", "gemini_oauth"):
-            GEMINI_API_KEY = key
-            env_line = f"GEMINI_API_KEY={key}"
-        elif provider == "openrouter":
-            OPENROUTER_KEY = key
-            env_line = f"OPENROUTER_API_KEY={key}"
-
-        # Persist to env file
-        if env_line:
-            env_path = Path.home() / ".env.openrouter"
-            existing = env_path.read_text() if env_path.exists() else ""
-            # Replace existing line for this provider or append
-            var_name = env_line.split("=")[0]
-            lines = [l for l in existing.splitlines() if not l.startswith(var_name + "=")]
-            lines.append(env_line)
-            env_path.write_text("\n".join(lines) + "\n")
-            env_path.chmod(0o600)
-
-        self.send_json({
-            "ok": True,
-            "provider": provider,
-            "key_prefix": key[:12] + "...",
-            "keys_active": {
-                "anthropic": bool(ANTHROPIC_API_KEY),
-                "gemini": bool(GEMINI_API_KEY),
-                "openrouter": bool(OPENROUTER_KEY),
-            }
-        })
-
-    # ── LOOP CONTROL ──────────────────────────────────────────
-
-    _loop_state = {"running": False, "results": [], "error": None, "started_at": None}
-
-    def h_loop_start(self):
-        """Start a background coggy/agent loop."""
-        import threading
-        if Handler._loop_state["running"]:
-            self.send_json({"error": "loop already running"}, 409); return
-        body = self.read_body()
-        lanes = int(body.get("lanes", 3))
-        steps = int(body.get("steps", 5))
-        model = body.get("model", "google/gemini-2.5-flash")
-
-        Handler._loop_state = {"running": True, "results": [], "error": None,
-                                "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-                                "lanes": lanes, "steps": steps, "model": model}
-
-        def run_bg():
-            try:
-                import subprocess
-                result = subprocess.run([
-                    sys.executable,
-                    str(Path(__file__).resolve().parent.parent.parent / "metaops" / "martial" / "ops" / "coggy_loops.py"),
-                    "--lanes", str(lanes), "--steps", str(steps), "--model", model
-                ], capture_output=True, text=True, timeout=600,
-                   cwd=str(Path(__file__).resolve().parent.parent.parent / "metaops" / "martial"))
-                Handler._loop_state["results"] = result.stdout.split("\n")[-5:]
-                Handler._loop_state["error"] = result.stderr[-200:] if result.returncode != 0 else None
-            except Exception as e:
-                Handler._loop_state["error"] = str(e)
-            finally:
-                Handler._loop_state["running"] = False
-
-        threading.Thread(target=run_bg, daemon=True).start()
-        self.send_json({"started": True, "lanes": lanes, "steps": steps, "model": model})
-
-    def h_loop_status(self):
-        self.send_json(Handler._loop_state)
-
-    def h_loop_status_get(self):
-        self.send_json(Handler._loop_state)
-
     def h_agent_gemini(self):
         body = self.read_body()
         prompt = body.get("prompt", "")
@@ -1262,18 +920,6 @@ class Handler(BaseHTTPRequestHandler):
         if not GEMINI_API_KEY:
             self.send_err("GEMINI_API_KEY not configured", 503); return
         result = call_gemini(prompt, system=system, max_tokens=max_tokens)
-        self.send_json(result, 200 if "error" not in result else 502)
-
-    def h_agent_lathe(self):
-        body = self.read_body()
-        doc_text = body.get("doc_text", body.get("text", ""))
-        goal = body.get("goal", "")
-        lang = body.get("lang", "Hebrew")
-        if not doc_text:
-            self.send_err("doc_text required", 400); return
-        if not ANTHROPIC_API_KEY and not OPENROUTER_KEY:
-            self.send_err("No API key configured on server", 503); return
-        result = call_lathe(doc_text, goal=goal, lang=lang)
         self.send_json(result, 200 if "error" not in result else 502)
 
     # ── Pipeline Routes ─────────────────────────────────
@@ -1660,24 +1306,6 @@ def run_smoke_tests():
     ))
     t("invalid density errors", lambda: assert_("error" in load_sample(sample).view("bad")))
 
-    t("mint PILOT token", lambda: assert_(mint_token("PILOT")["token"].startswith("PILOT-")))
-    t("check valid token", lambda: assert_(check_token(mint_token("PILOT")["token"])[0]))
-    t("check empty token", lambda: assert_(not check_token("")[0]))
-    t("PILOT fails DISPATCH scope", lambda: assert_(
-        not check_token(mint_token("PILOT")["token"], "DISPATCH")[0]
-    ))
-    t("ADMIN passes all scopes", lambda: [
-        assert_(check_token(mint_token("ADMIN")["token"], s)[0]) for s in ["PILOT", "EXPORT", "DISPATCH"]
-    ])
-    t("revoked token fails", lambda: (
-        lambda r: (TOKEN_STORE[r["token"]].__setitem__("revoked", True) or True) and assert_(not check_token(r["token"])[0])
-    )(mint_token("PILOT")))
-    t("invalid scope raises", lambda: (
-        lambda: (_ for _ in ()).throw(ValueError) if not True else None
-    ) or assert_(True))  # simplified
-    t("catalog has 3 tiers", lambda: assert_(len(CATALOG) >= 3))
-    t("pilot is free", lambda: assert_(CATALOG[0]["price_ILS"] == 0))
-
     print("=" * 45 + f"\n  {PASS} passed  |  {FAIL} failed")
     if FAIL:
         sys.exit(1)
@@ -1691,18 +1319,11 @@ def main():
         cmd = sys.argv[1]
         if cmd == "test":
             run_smoke_tests(); return
-        if cmd == "loop":
-            dry = "--dry" in sys.argv
-            if SHEET_URL:
-                SHEET.load(SHEET_URL)
-            results = run_agent_loop(dry_run=dry)
-            print(json.dumps(results, indent=2, ensure_ascii=False)); return
         if cmd == "help":
             print(__doc__); return
 
     print(f"{SERVICE_ID} v{VERSION}")
     print(f"  port:        :{PORT}")
-    print(f"  pilot_mode:  {PILOT_MODE}")
     print(f"  anthropic:   {'set' if ANTHROPIC_API_KEY else 'not set'}")
     print(f"  openrouter:  {'set' if OPENROUTER_KEY else 'not set'}")
     print(f"  static_dir:  {STATIC_DIR}")
