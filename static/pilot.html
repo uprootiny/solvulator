@@ -19,16 +19,44 @@
 </style>
 </head>
 <body class="bg-[#0B0F14] text-white min-h-screen flex">
-<aside class="w-60 bg-[#11161C] p-5 flex flex-col">
-  <h1 class="text-xl font-bold mb-2">Solvulator</h1>
-  <div class="text-xs text-gray-500 mb-6">12-Agent Legal Pipeline</div>
-  <div class="space-y-2 text-sm flex-1">
-    <a href="/" class="block p-2 rounded hover:bg-[#1C2330]">Storyboard</a>
-    <div class="p-2 rounded bg-[#1C2330]">Pipeline</div>
-    <a href="/check.html" class="block p-2 rounded hover:bg-[#1C2330]">System Check</a>
-    <a href="/index.html" class="block p-2 rounded hover:bg-[#1C2330]">Classic UI</a>
+<aside class="w-72 bg-[#11161C] flex flex-col h-screen overflow-hidden">
+  <div class="p-4 border-b border-gray-800">
+    <h1 class="text-lg font-bold">Solvulator</h1>
+    <div class="flex gap-2 mt-2 text-xs">
+      <a href="/" class="px-2 py-1 rounded bg-[#1C2330] hover:bg-[#2C3340]">Storyboard</a>
+      <span class="px-2 py-1 rounded bg-blue-900/40 text-blue-300">Pipeline</span>
+      <a href="/check.html" class="px-2 py-1 rounded bg-[#1C2330] hover:bg-[#2C3340]">Check</a>
+    </div>
   </div>
-  <div class="text-xs text-gray-600 mt-4">
+
+  <!-- Document Library -->
+  <div class="flex-1 overflow-y-auto p-3">
+    <div class="flex justify-between items-center mb-2">
+      <h2 class="text-xs font-bold text-gray-400 tracking-wider">DOCUMENTS</h2>
+      <label class="text-[10px] bg-blue-900/30 text-blue-300 px-2 py-0.5 rounded cursor-pointer hover:bg-blue-900/50">
+        + Upload
+        <input type="file" accept=".pdf,.txt,.doc,.docx,.jpg,.png" class="hidden" onchange="handleFileUpload(this)"/>
+      </label>
+    </div>
+    <div id="doc-library" class="space-y-1.5">
+      <div class="text-xs text-gray-600 p-2">Loading...</div>
+    </div>
+  </div>
+
+  <!-- Viewer panel (slides up when doc selected) -->
+  <div id="doc-viewer" class="border-t border-gray-800 bg-[#0D1117] max-h-[40vh] overflow-y-auto hidden">
+    <div class="flex justify-between items-center p-3 sticky top-0 bg-[#0D1117] z-10">
+      <h3 id="viewer-title" class="text-xs font-bold text-gray-300 truncate"></h3>
+      <div class="flex gap-1.5">
+        <button onclick="analyzeViewedDoc()" class="text-[10px] bg-emerald-900/30 text-emerald-300 px-2 py-0.5 rounded hover:bg-emerald-900/50">Analyze</button>
+        <button onclick="openDocNewTab()" class="text-[10px] bg-gray-700 text-gray-300 px-2 py-0.5 rounded hover:bg-gray-600">Open ↗</button>
+        <button onclick="closeViewer()" class="text-[10px] text-gray-500 hover:text-white px-1">✕</button>
+      </div>
+    </div>
+    <div id="viewer-content" class="px-3 pb-3"></div>
+  </div>
+
+  <div class="p-3 border-t border-gray-800 text-xs text-gray-600">
     <div id="health-status">Checking...</div>
   </div>
 </aside>
@@ -301,6 +329,175 @@ document.getElementById('approve').onclick = async () => {
 
 document.getElementById('step').onclick = runStep;
 
+// ── Document Library ──
+let allDocs = [];
+let viewedDoc = null;
+
+function docIcon(type, name) {
+  if ((type||'').includes('pdf') || (name||'').endsWith('.pdf')) return '📄';
+  if ((type||'').includes('image')) return '🖼';
+  if ((type||'').includes('text') || (name||'').match(/\.(txt|md|csv)$/)) return '📝';
+  return '📎';
+}
+
+function formatSize(b) {
+  if (b > 1048576) return (b/1048576).toFixed(1) + 'MB';
+  if (b > 1024) return (b/1024).toFixed(0) + 'KB';
+  return b + 'B';
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  return iso.replace('T',' ').replace(/:\d{2}Z$/,'');
+}
+
+function renderDocLibrary() {
+  const lib = document.getElementById('doc-library');
+  const sel = document.getElementById('doc-select');
+  sel.innerHTML = '<option value="">-- Select document --</option>';
+
+  if (!allDocs.length) {
+    lib.innerHTML = '<div class="text-xs text-gray-600 p-2">No documents yet. Upload or paste a link.</div>';
+    return;
+  }
+
+  lib.innerHTML = allDocs.map(d => {
+    const icon = docIcon(d.type, d.filename);
+    const isPdf = (d.type||'').includes('pdf');
+    const isText = (d.type||'').includes('text');
+    return `
+    <div class="group p-2 rounded-lg hover:bg-[#1C2330] cursor-pointer transition-all border border-transparent hover:border-gray-700"
+         onclick="selectDoc('${d.doc_id}')">
+      <div class="flex items-start gap-2">
+        <span class="text-lg mt-0.5">${icon}</span>
+        <div class="flex-1 min-w-0">
+          <div class="text-xs font-medium text-gray-200 truncate">${d.filename}</div>
+          <div class="flex items-center gap-2 mt-0.5 text-[10px] text-gray-500">
+            <span>${formatSize(d.size)}</span>
+            ${d.sv_id ? `<span class="bg-blue-900/30 text-blue-300 px-1 rounded">${d.sv_id}</span>` : ''}
+            ${isPdf ? '<span class="text-red-400">PDF</span>' : ''}
+            ${isText ? '<span class="text-green-400">TXT</span>' : ''}
+          </div>
+          <div class="text-[10px] text-gray-600 mt-0.5">${formatDate(d.uploaded_at)}</div>
+        </div>
+        <div class="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
+          <button onclick="event.stopPropagation();loadDocToPipeline('${d.doc_id}')" class="text-[10px] bg-blue-900/40 text-blue-300 px-1.5 py-0.5 rounded" title="Load into pipeline">▶</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Also populate the dropdown
+  allDocs.forEach(d => {
+    const opt = document.createElement('option');
+    opt.value = d.doc_id;
+    opt.textContent = `${d.filename} (${formatSize(d.size)}) ${d.sv_id ? '· '+d.sv_id : ''}`;
+    sel.appendChild(opt);
+  });
+}
+
+async function loadDocs() {
+  try {
+    const resp = await fetch(API + '/doc/list');
+    const data = await resp.json();
+    allDocs = data.documents || [];
+    renderDocLibrary();
+  } catch(e) { console.log('doc list unavailable'); }
+}
+
+async function selectDoc(docId) {
+  viewedDoc = allDocs.find(d => d.doc_id === docId);
+  if (!viewedDoc) return;
+
+  const viewer = document.getElementById('doc-viewer');
+  const title = document.getElementById('viewer-title');
+  const content = document.getElementById('viewer-content');
+
+  title.textContent = viewedDoc.filename;
+  viewer.classList.remove('hidden');
+
+  const isPdf = (viewedDoc.type||'').includes('pdf');
+  const isImage = (viewedDoc.type||'').includes('image');
+  const isText = (viewedDoc.type||'').includes('text');
+
+  if (isPdf) {
+    content.innerHTML = `
+      <div class="text-xs text-gray-400 mb-2">PDF · ${formatSize(viewedDoc.size)}</div>
+      <object data="${API}/doc/${docId}" type="application/pdf" class="w-full rounded" style="height:250px">
+        <div class="text-xs text-gray-500 p-4 bg-black/40 rounded">
+          PDF preview unavailable.
+          <a href="${API}/doc/${docId}" target="_blank" class="text-blue-400 underline">Open in new tab</a>
+        </div>
+      </object>
+      <button onclick="loadDocToPipeline('${docId}')" class="mt-2 w-full text-xs bg-blue-900/40 text-blue-300 py-2 rounded hover:bg-blue-900/60">
+        Load into Pipeline ▶
+      </button>`;
+  } else if (isImage) {
+    content.innerHTML = `
+      <img src="${API}/doc/${docId}" class="w-full rounded" style="max-height:250px;object-fit:contain"/>
+      <button onclick="loadDocToPipeline('${docId}')" class="mt-2 w-full text-xs bg-blue-900/40 text-blue-300 py-2 rounded hover:bg-blue-900/60">
+        Load into Pipeline ▶
+      </button>`;
+  } else if (isText) {
+    try {
+      const r = await fetch(API + '/doc/' + docId);
+      const text = await r.text();
+      content.innerHTML = `
+        <pre class="text-[11px] text-gray-300 bg-black/40 p-2 rounded max-h-[200px] overflow-auto whitespace-pre-wrap">${escHtml(text.slice(0, 3000))}${text.length > 3000 ? '\n\n[...truncated]' : ''}</pre>
+        <button onclick="loadDocToPipeline('${docId}')" class="mt-2 w-full text-xs bg-blue-900/40 text-blue-300 py-2 rounded hover:bg-blue-900/60">
+          Load into Pipeline ▶
+        </button>`;
+    } catch(e) { content.innerHTML = '<div class="text-xs text-red-400">Failed to load</div>'; }
+  } else {
+    content.innerHTML = `
+      <div class="text-xs text-gray-500 p-2">Unknown type: ${viewedDoc.type}</div>
+      <a href="${API}/doc/${docId}" target="_blank" class="text-xs text-blue-400 underline">Download</a>`;
+  }
+}
+
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function closeViewer() {
+  document.getElementById('doc-viewer').classList.add('hidden');
+  viewedDoc = null;
+}
+
+function openDocNewTab() {
+  if (viewedDoc) window.open(API + '/doc/' + viewedDoc.doc_id, '_blank');
+}
+
+async function analyzeViewedDoc() {
+  if (!viewedDoc) return;
+  toast('Starting analysis...');
+  try {
+    const resp = await fetch(API + '/doc/' + viewedDoc.doc_id + '/analyze', {method:'POST'});
+    const data = await resp.json();
+    if (data.run_id) {
+      runId = data.run_id;
+      toast('Pipeline started from document');
+    } else {
+      toast('Analysis failed: ' + (data.error || '?'));
+    }
+  } catch(e) { toast('Error: ' + e.message); }
+}
+
+async function loadDocToPipeline(docId) {
+  try {
+    const resp = await fetch(API + '/doc/' + docId);
+    const type = resp.headers.get('Content-Type') || '';
+    if (type.includes('text') || type.includes('json')) {
+      document.getElementById('doc-text').value = await resp.text();
+      toast('Loaded into pipeline');
+    } else {
+      toast('Binary file — use Analyze button instead');
+    }
+  } catch(e) { toast('Failed: ' + e.message); }
+}
+
+document.getElementById('doc-select').onchange = function() {
+  if (this.value) loadDocToPipeline(this.value);
+};
+
 // ── File upload ──
 async function handleFile(input) {
   const file = input.files[0];
@@ -310,35 +507,19 @@ async function handleFile(input) {
   toast('Loaded: ' + file.name);
 }
 
-// ── Load documents from backend ──
-async function loadDocs() {
+async function handleFileUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  toast('Uploading ' + file.name + '...');
+  const fd = new FormData();
+  fd.append('file', file);
   try {
-    const resp = await fetch(API + '/doc/list');
-    const data = await resp.json();
-    const select = document.getElementById('doc-select');
-    (data.documents || []).forEach(d => {
-      const opt = document.createElement('option');
-      opt.value = d.doc_id;
-      opt.textContent = `${d.filename} (${(d.size/1024).toFixed(0)}KB) ${d.sv_id ? '· '+d.sv_id : ''}`;
-      select.appendChild(opt);
-    });
-  } catch(e) {}
+    const r = await fetch(API + '/doc/upload', {method:'POST', body:fd});
+    const d = await r.json();
+    toast('Uploaded: ' + (d.filename || file.name));
+    loadDocs(); // refresh library
+  } catch(e) { toast('Upload failed: ' + e.message); }
 }
-
-document.getElementById('doc-select').onchange = async function() {
-  const docId = this.value;
-  if (!docId) return;
-  try {
-    const resp = await fetch(API + '/doc/' + docId);
-    const type = resp.headers.get('Content-Type') || '';
-    if (type.includes('text') || type.includes('json')) {
-      document.getElementById('doc-text').value = await resp.text();
-      toast('Loaded document');
-    } else {
-      toast('PDF/binary — text extraction needed. Use "Analyze" from storyboard.');
-    }
-  } catch(e) { toast('Failed to load: ' + e.message); }
-};
 
 // ── Health check ──
 async function checkHealth() {
