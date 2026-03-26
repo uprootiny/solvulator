@@ -1,0 +1,319 @@
+;; Legal Document Processing Pipeline
+;; 12-agent chain for Israeli legal document analysis and response
+;; All agent outputs are composable: each stage's output schema is the next stage's input schema.
+
+{:pipeline/id   "legal-doc-pipeline-v2"
+ :pipeline/name "Israeli Legal Document Processing Pipeline"
+ :pipeline/version "2.0.0"
+ :pipeline/description "12-stage pipeline: intake -> analysis -> intelligence -> action -> control -> learning"
+
+ ;; ────────────────────────────────────────────────────────────────
+ ;; Agent Definitions
+ ;; ────────────────────────────────────────────────────────────────
+
+ :agents
+ [{:id           :01-intake
+   :name         "Intake & Classification"
+   :prompt-file  "agents/01-intake.md"
+   :phase        :intake
+   :human-gate?  true
+   :gate-action  :approve-classification
+   :reject-to    :01-intake
+   :inputs       [:raw-document-metadata]
+   :outputs      [:classification :deadlines :routing]
+   :output-stage "01-intake"}
+
+  {:id           :02-ocr
+   :name         "OCR & Text Integrity"
+   :prompt-file  "agents/02-ocr.md"
+   :phase        :intake
+   :human-gate?  true
+   :gate-action  :verify-text-integrity
+   :reject-to    :02-ocr
+   :skip-when    #(not (get-in % [:stage_01_output :routing :requires_ocr]))
+   :inputs       [:stage-01-output :document-pages]
+   :outputs      [:text :structure]
+   :output-stage "02-ocr"}
+
+  {:id           :03-operative-extraction
+   :name         "Operative Extraction"
+   :prompt-file  "agents/03-operative-extraction.md"
+   :phase        :analysis
+   :human-gate?  true
+   :gate-action  :confirm-components
+   :reject-to    :03-operative-extraction
+   :inputs       [:stage-01-output :stage-02-output]
+   :outputs      [:operative-components :completion-requests :deadline-conflicts]
+   :output-stage "03-operative-extraction"
+   :preconditions [{:field [:stage-02-output :gate :text_verified]
+                    :value true
+                    :message "OCR text must be human-verified before operative extraction"}]}
+
+  {:id           :04-legal-structure
+   :name         "Legal Structure Mapper"
+   :prompt-file  "agents/04-legal-structure.md"
+   :phase        :analysis
+   :human-gate?  false
+   :inputs       [:stage-01-output :stage-02-output :stage-03-output]
+   :outputs      [:claims :property-rights-analysis :laches-analysis :structure-summary]
+   :output-stage "04-legal-structure"
+   :preconditions [{:field [:stage-03-output :gate :components_confirmed]
+                    :value true
+                    :message "Operative components must be confirmed before structure mapping"}]}
+
+  {:id           :05-weakness-detection
+   :name         "Weakness Detector"
+   :prompt-file  "agents/05-weakness-detector.md"
+   :phase        :analysis
+   :human-gate?  false
+   :inputs       [:stage-01-output :stage-02-output :stage-03-output :stage-04-output]
+   :outputs      [:weaknesses :contradiction-pairs :summary]
+   :output-stage "05-weakness-detection"}
+
+  {:id           :06-foi-triggers
+   :name         "FOI Trigger Analyzer"
+   :prompt-file  "agents/06-foi-trigger.md"
+   :phase        :intelligence
+   :human-gate?  true
+   :gate-action  :review-foi-drafts
+   :reject-to    :06-foi-triggers
+   :inputs       [:stage-01-output :stage-02-output :stage-04-output :stage-05-output]
+   :outputs      [:triggers]
+   :output-stage "06-foi-triggers"
+   :side-channel? true  ;; FOI requests are dispatched independently, not blocking main flow
+   :constraint   "NEVER auto-send. All FOI drafts require explicit human approval."}
+
+  {:id           :07-damage-exposure
+   :name         "Damage Exposure Calculator"
+   :prompt-file  "agents/07-damage-calculator.md"
+   :phase        :intelligence
+   :human-gate?  false
+   :inputs       [:stage-01-output :stage-03-output :stage-04-output :stage-05-output :property-context]
+   :outputs      [:exposure]
+   :output-stage "07-damage-exposure"
+   :constraint   "No accusations. Estimates only. All amounts in ILS with stated assumptions."}
+
+  {:id           :08-strategy
+   :name         "Strategy Builder"
+   :prompt-file  "agents/08-strategy-builder.md"
+   :phase        :action
+   :human-gate?  false
+   :inputs       [:stage-01-output :stage-03-output :stage-04-output :stage-05-output :stage-06-output :stage-07-output]
+   :outputs      [:alternatives :recommended-approach :do-nothing-analysis]
+   :output-stage "08-strategy"
+   :constraint   "Must always include do-nothing analysis. Minimum 2 alternatives."}
+
+  {:id           :09-draft
+   :name         "Draft Generator"
+   :prompt-file  "agents/09-draft-generator.md"
+   :phase        :action
+   :human-gate?  false
+   :inputs       [:stage-01-output :stage-02-output :stage-03-output :stage-04-output
+                  :stage-05-output :stage-07-output :stage-08-output :selected-strategy]
+   :outputs      [:draft :style-checks]
+   :output-stage "09-draft"
+   :mandatory-sections [1 2 3 4 5 6]
+   :style-constraints {:no-aggressive-language true
+                       :no-personal-attribution true
+                       :structural-only true}}
+
+  {:id           :10-verification
+   :name         "Human Verification Gate"
+   :prompt-file  "agents/10-human-verification.md"
+   :phase        :control
+   :human-gate?  true
+   :gate-action  :approve-for-dispatch
+   :reject-to    :09-draft
+   :inputs       [:stage-01-output :stage-02-output :stage-03-output :stage-04-output
+                  :stage-05-output :stage-07-output :stage-08-output :stage-09-output
+                  :prior-pleadings]
+   :outputs      [:checks :overall-result]
+   :output-stage "10-verification"
+   :checks       [:fact-check :legal-reference-check :deadline-check
+                  :consistency-check :litigation-risk]
+   :blocking-rule "Any blocking issue prevents dispatch. No exceptions."}
+
+  {:id           :11-filing-dispatch
+   :name         "Filing & Dispatch Controller"
+   :prompt-file  "agents/11-filing-dispatch.md"
+   :phase        :control
+   :human-gate?  false
+   :inputs       [:stage-01-output :stage-03-output :stage-09-output :stage-10-output
+                  :service-configuration]
+   :outputs      [:filing :service :reminders]
+   :output-stage "11-filing-dispatch"
+   :preconditions [{:field [:stage-10-output :gate :human_approved]
+                    :value true
+                    :message "Human approval required before any dispatch"}
+                   {:field [:stage-10-output :overall-result :blocking_issues_count]
+                    :value 0
+                    :comparator :eq
+                    :message "No blocking issues may be present at dispatch"}]
+   :constraint   "Shabbat/holiday aware. Record all proof of service."}
+
+  {:id           :12-meta-pattern
+   :name         "Meta-Pattern Recorder"
+   :prompt-file  "agents/12-meta-pattern.md"
+   :phase        :learning
+   :human-gate?  false
+   :inputs       [:stage-01-output :stage-03-output :stage-04-output :stage-05-output
+                  :stage-07-output :stage-08-output :stage-11-output :outcome]
+   :outputs      [:pattern-record :trend-updates :insights]
+   :output-stage "12-meta-pattern"
+   :append-only? true
+   :constraint   "No personal identifiers. Institutional patterns only. Append-only storage."}]
+
+ ;; ────────────────────────────────────────────────────────────────
+ ;; Phase Definitions
+ ;; ────────────────────────────────────────────────────────────────
+
+ :phases
+ {:intake       {:order 1
+                 :agents [:01-intake :02-ocr]
+                 :description "Document receipt, classification, and text extraction"
+                 :color "#4a90d9"}
+  :analysis     {:order 2
+                 :agents [:03-operative-extraction :04-legal-structure :05-weakness-detection]
+                 :description "Operative extraction, legal structure mapping, weakness identification"
+                 :color "#e6a23c"}
+  :intelligence {:order 3
+                 :agents [:06-foi-triggers :07-damage-exposure]
+                 :description "FOI trigger detection and damage exposure estimation"
+                 :color "#9b59b6"
+                 :note "Agent 06 has side-channel output (FOI drafts). Agent 07 requires property context."}
+  :action       {:order 4
+                 :agents [:08-strategy :09-draft]
+                 :description "Strategy formulation and document drafting"
+                 :color "#27ae60"}
+  :control      {:order 5
+                 :agents [:10-verification :11-filing-dispatch]
+                 :description "Verification, approval, and dispatch"
+                 :color "#e74c3c"}
+  :learning     {:order 6
+                 :agents [:12-meta-pattern]
+                 :description "Pattern extraction and trend analysis"
+                 :color "#607d8b"}}
+
+ ;; ────────────────────────────────────────────────────────────────
+ ;; Flow Graph (directed edges)
+ ;; ────────────────────────────────────────────────────────────────
+
+ :flow
+ [;; Intake phase
+  [:01-intake        :02-ocr]
+
+  ;; Intake -> Analysis
+  [:02-ocr           :03-operative-extraction]
+
+  ;; Analysis phase (sequential)
+  [:03-operative-extraction :04-legal-structure]
+  [:04-legal-structure      :05-weakness-detection]
+
+  ;; Analysis -> Intelligence (parallel fan-out)
+  [:05-weakness-detection :06-foi-triggers]
+  [:05-weakness-detection :07-damage-exposure]
+
+  ;; Intelligence -> Action
+  [:06-foi-triggers  :08-strategy]
+  [:07-damage-exposure :08-strategy]
+
+  ;; Action phase
+  [:08-strategy      :09-draft]
+
+  ;; Action -> Control
+  [:09-draft         :10-verification]
+
+  ;; Control phase
+  [:10-verification  :11-filing-dispatch]
+
+  ;; Control -> Learning
+  [:11-filing-dispatch :12-meta-pattern]]
+
+ ;; ────────────────────────────────────────────────────────────────
+ ;; Conditional Edges (skip/branch logic)
+ ;; ────────────────────────────────────────────────────────────────
+
+ :conditional-edges
+ [{:from      :01-intake
+   :to        :03-operative-extraction
+   :condition #(not (get-in % [:stage_01_output :routing :requires_ocr]))
+   :label     "Skip OCR if digital text available"}
+
+  {:from      :10-verification
+   :to        :09-draft
+   :condition #(not (get-in % [:stage_10_output :gate :human_approved]))
+   :label     "Rejection loop: revise and re-verify"}]
+
+ ;; ────────────────────────────────────────────────────────────────
+ ;; Human Gates
+ ;; ────────────────────────────────────────────────────────────────
+
+ :human-gates
+ {:01-intake
+  {:gate-field   [:gate :classification_approved]
+   :action       "Review and approve document classification, urgency, and deadline extraction"
+   :reject-to    :01-intake
+   :blocking?    true}
+
+  :02-ocr
+  {:gate-field   [:gate :text_verified]
+   :action       "Review OCR output, correct uncertain regions, verify text accuracy"
+   :reject-to    :02-ocr
+   :blocking?    true
+   :skip-if      "low_confidence_count == 0 AND overall_confidence == high"}
+
+  :03-operative-extraction
+  {:gate-field   [:gate :components_confirmed]
+   :action       "Confirm all operative components captured. Add any missed items."
+   :reject-to    :03-operative-extraction
+   :blocking?    true}
+
+  :06-foi-triggers
+  {:gate-field   [:gate :drafts_reviewed]
+   :action       "Review FOI draft requests. Approve, modify, or reject each individually."
+   :reject-to    :06-foi-triggers
+   :blocking?    false  ;; FOI is a side channel, does not block main flow
+   :constraint   "NEVER auto-send. Human selects which drafts to dispatch."}
+
+  :10-verification
+  {:gate-field   [:gate :human_approved]
+   :action       "Final review: fact check, legal references, deadlines, consistency, litigation risk"
+   :reject-to    :09-draft
+   :blocking?    true}}
+
+ ;; ────────────────────────────────────────────────────────────────
+ ;; Inter-Stage Data Schema (type contracts between agents)
+ ;; ────────────────────────────────────────────────────────────────
+
+ :data-schema
+ {:document-id       {:type :string :format :uuid :required true}
+  :stage-01-output   {:type :map :keys [:stage :document_id :classification :deadlines :routing :gate :metadata]}
+  :stage-02-output   {:type :map :keys [:stage :document_id :text :structure :gate :metadata]}
+  :stage-03-output   {:type :map :keys [:stage :document_id :operative_components :completion_requests :deadline_conflicts :gate :metadata]}
+  :stage-04-output   {:type :map :keys [:stage :document_id :claims :property_rights_analysis :laches_analysis :structure_summary :metadata]}
+  :stage-05-output   {:type :map :keys [:stage :document_id :weaknesses :contradiction_pairs :summary :metadata]}
+  :stage-06-output   {:type :map :keys [:stage :document_id :triggers :summary :gate :metadata]}
+  :stage-07-output   {:type :map :keys [:stage :document_id :exposure :metadata]}
+  :stage-08-output   {:type :map :keys [:stage :document_id :alternatives :recommended_approach :do_nothing_analysis :metadata]}
+  :stage-09-output   {:type :map :keys [:stage :document_id :draft :style_checks :metadata]}
+  :stage-10-output   {:type :map :keys [:stage :document_id :checks :overall_result :gate :metadata]}
+  :stage-11-output   {:type :map :keys [:stage :document_id :filing :service :reminders :service_summary :metadata]}
+  :stage-12-output   {:type :map :keys [:stage :document_id :pattern_record :trend_updates :insights :metadata]}}
+
+ ;; ────────────────────────────────────────────────────────────────
+ ;; Pipeline Discipline Rules
+ ;; ────────────────────────────────────────────────────────────────
+
+ :discipline-rules
+ ["No agent may be skipped except 02-ocr when document is born-digital"
+  "No downstream agent may consume data from a gate that has not been approved"
+  "No document is dispatched without Agent 10 human approval"
+  "No FOI request is sent without explicit human approval per draft"
+  "No personal attribution or aggressive language in any output"
+  "No pattern data records individual names or personal identifiers"
+  "Every estimate states its assumptions and confidence level"
+  "All dates are ISO 8601. Hebrew calendar dates are converted."
+  "All financial amounts are in ILS unless explicitly stated otherwise"
+  "Style check failures in Agent 09 require revision before proceeding"
+  "Agent 12 is append-only. Historical patterns are never deleted."
+  "Every document passes all applicable stages. No shortcuts."]}

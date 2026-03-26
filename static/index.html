@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Solvulator v0.4 — צינור עיבוד משפטי</title>
+<style>
+/* ══════════════════════════════════════════════════════
+   SOLVULATOR v0.4 — Legal Document Processing Pipeline
+   ══════════════════════════════════════════════════════ */
+:root {
+  --bg:        #0a0a0c;
+  --bg-panel:  #0e0e10;
+  --bg-card:   #111114;
+  --bg-hover:  #16161a;
+  --border:    #1e1e22;
+  --border-hi: #2a2a30;
+  --text:      #c8c4b8;
+  --text-dim:  #666;
+  --text-mute: #444;
+  --gold:      #c9a227;
+  --gold-dim:  #8a7020;
+  --green-bright: #3a8a3a;
+  --green-dim: #1a3a1a;
+  --red:       #a03030;
+  --red-dim:   #301010;
+  --blue:      #3a5a9a;
+  --blue-dim:  #0a1a3a;
+  --orange:    #b87020;
+  --mono:      'Courier New', 'Liberation Mono', monospace;
+}
+
+*{margin:0;padding:0;box-sizing:border-box}
+
+body{
+  background:var(--bg);color:var(--text);font-family:var(--mono);
+  direction:rtl;min-height:100vh;display:flex;flex-direction:column;
+  font-size:12px;line-height:1.5;
+}
+
+/* ── HEADER ── */
+#header{
+  padding:10px 20px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:14px;background:var(--bg-panel);
+  flex-shrink:0;
+}
+#header h1{font-size:13px;color:var(--gold);letter-spacing:3px;font-weight:400}
+#header .sub{font-size:9px;color:var(--text-mute);letter-spacing:2px}
+.chip{
+  font-size:8px;padding:2px 8px;border-radius:2px;letter-spacing:1px;
+  border:1px solid var(--border);color:var(--text-mute);
+}
+.chip.live{border-color:var(--green-bright);color:var(--green-bright);background:var(--green-dim)}
+.chip.warn{border-color:var(--orange);color:var(--orange)}
+.chip.off{border-color:var(--red);color:var(--red)}
+
+/* ── LAYOUT ── */
+#main{
+  flex:1;display:grid;
+  grid-template-columns:260px 1fr 320px;
+  min-height:0;overflow:hidden;
+}
+
+/* ── LEFT PANEL: Queue ── */
+#panel-queue{
+  background:var(--bg-panel);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+#panel-queue .panel-head{
+  padding:10px 12px;border-bottom:1px solid var(--border);
+  font-size:10px;color:var(--gold);letter-spacing:2px;
+}
+#queue-list{
+  flex:1;overflow-y:auto;padding:6px;
+}
+.q-item{
+  padding:8px 10px;border:1px solid var(--border);cursor:pointer;
+  border-radius:2px;margin-bottom:4px;transition:all 0.15s;
+}
+.q-item:hover{border-color:var(--border-hi);background:var(--bg-hover)}
+.q-item.active{border-color:var(--gold);background:#1a1208}
+.q-id{font-size:10px;color:var(--gold);font-weight:700}
+.q-meta{font-size:9px;color:var(--text-mute);margin-top:2px}
+.q-badge{
+  display:inline-block;font-size:8px;padding:1px 5px;border-radius:1px;
+  letter-spacing:0.5px;margin-left:6px;
+}
+.q-badge.high{color:var(--red);border:1px solid var(--red)}
+.q-badge.medium{color:var(--orange);border:1px solid var(--orange)}
+.q-badge.low{color:var(--text-mute);border:1px solid var(--border)}
+
+/* ── CENTER: Document + Pipeline ── */
+#panel-center{
+  display:flex;flex-direction:column;overflow:hidden;
+}
+
+/* doc header */
+#doc-header{
+  padding:12px 16px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:12px;flex-shrink:0;
+}
+#doc-title{font-size:12px;color:var(--gold);letter-spacing:1px}
+#doc-stage{font-size:9px;color:var(--text-mute)}
+#doc-status{font-size:9px;padding:2px 6px;border-radius:2px;letter-spacing:1px}
+
+/* pipeline nodes */
+#pipeline{
+  flex:1;overflow-y:auto;padding:12px 16px;
+}
+.node{
+  border:1px solid var(--border);padding:10px 14px;border-radius:2px;
+  margin-bottom:6px;background:var(--bg-card);transition:all 0.2s;
+}
+.node.done{border-color:var(--green-dim);background:#0a120a}
+.node.running{border-color:var(--gold);animation:pulse 1.5s infinite}
+.node.pending{opacity:0.35}
+.node.human-gate{border-right:3px solid var(--gold-dim)}
+.node-head{display:flex;align-items:center;gap:8px}
+.node-num{font-size:14px;color:var(--text-mute);font-weight:700;min-width:24px}
+.node-name{font-size:10px;color:var(--gold);letter-spacing:1px}
+.node-he{font-size:10px;color:var(--text-dim);margin-right:8px}
+.node-status{margin-right:auto;font-size:9px}
+.node-status.pass{color:var(--green-bright)}
+.node-status.active{color:var(--gold)}
+.node-status.wait{color:var(--text-mute)}
+.human-tag{
+  font-size:7px;color:var(--gold-dim);border:1px solid var(--gold-dim);
+  padding:1px 5px;border-radius:1px;letter-spacing:1px;
+}
+.node-body{
+  font-size:10px;color:var(--text-dim);line-height:1.6;white-space:pre-wrap;
+  max-height:180px;overflow-y:auto;margin-top:6px;direction:rtl;
+  padding:6px 8px;background:var(--bg);border-radius:2px;
+}
+
+/* ── RIGHT PANEL: Actions + Output ── */
+#panel-actions{
+  background:var(--bg-panel);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+#panel-actions .panel-head{
+  padding:10px 12px;border-bottom:1px solid var(--border);
+  font-size:10px;color:var(--gold);letter-spacing:2px;
+}
+#action-body{
+  flex:1;overflow-y:auto;padding:10px 12px;
+  display:flex;flex-direction:column;gap:10px;
+}
+
+/* action cards */
+.act-card{
+  border:1px solid var(--border);border-radius:2px;padding:10px;
+  background:var(--bg-card);
+}
+.act-card h3{font-size:10px;color:var(--gold);letter-spacing:1px;margin-bottom:6px;font-weight:400}
+
+/* buttons */
+.btn{
+  display:inline-block;padding:6px 14px;font-size:10px;font-family:var(--mono);
+  border:1px solid var(--border);background:var(--bg);color:var(--text-dim);
+  cursor:pointer;border-radius:2px;letter-spacing:1px;transition:all 0.15s;
+}
+.btn:hover{border-color:var(--gold);color:var(--gold)}
+.btn.primary{border-color:var(--gold-dim);color:var(--gold)}
+.btn.primary:hover{background:var(--gold-dim);color:var(--bg)}
+.btn:disabled{opacity:0.3;cursor:not-allowed}
+.btn.unlocked{border-color:var(--green-bright);color:var(--green-bright)}
+
+/* inputs */
+.inp{
+  width:100%;padding:5px 8px;font-size:10px;font-family:var(--mono);
+  border:1px solid var(--border);background:var(--bg);color:var(--text);
+  border-radius:2px;
+}
+.inp:focus{outline:none;border-color:var(--gold-dim)}
+textarea.inp{resize:vertical;min-height:60px;line-height:1.5}
+
+/* output area */
+#output-area{
+  border:1px solid var(--border);background:var(--bg);border-radius:2px;
+  padding:8px;font-size:10px;color:var(--text-dim);line-height:1.6;
+  white-space:pre-wrap;max-height:300px;overflow-y:auto;direction:ltr;
+  text-align:left;min-height:80px;
+}
+
+/* LATHE result */
+.lathe-score{
+  font-size:20px;font-weight:700;text-align:center;padding:8px;
+}
+.lathe-score.good{color:var(--green-bright)}
+.lathe-score.mid{color:var(--orange)}
+.lathe-score.bad{color:var(--red)}
+
+.failure-item{
+  padding:6px 8px;border-bottom:1px solid var(--border);font-size:10px;
+}
+.failure-type{
+  font-size:8px;letter-spacing:1px;padding:1px 4px;border-radius:1px;
+  display:inline-block;margin-left:6px;
+}
+.failure-type.distortion{color:var(--red);border:1px solid var(--red)}
+.failure-type.projection{color:var(--orange);border:1px solid var(--orange)}
+.failure-type.fixation{color:var(--blue);border:1px solid var(--blue)}
+.failure-type.assertion{color:var(--text-dim);border:1px solid var(--text-dim)}
+
+/* token gate */
+#token-gate{
+  border:1px solid var(--border);padding:10px;border-radius:2px;
+  background:var(--bg-card);
+}
+#tgStatus{font-size:10px;color:var(--text-dim);margin-bottom:6px}
+
+/* error banner */
+#err-banner{
+  display:none;padding:8px 12px;font-size:10px;
+  background:var(--red-dim);border:1px solid var(--red);
+  color:var(--red);border-radius:2px;margin-bottom:8px;
+}
+
+/* toast */
+#toast{
+  position:fixed;bottom:20px;left:20px;font-size:10px;color:var(--green-bright);
+  background:var(--green-dim);border:1px solid var(--green-bright);
+  padding:6px 14px;border-radius:2px;opacity:0;transition:opacity 0.3s;z-index:100;
+}
+#toast.show{opacity:1}
+
+/* scrollbar */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border-hi);border-radius:2px}
+
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+
+/* responsive */
+@media(max-width:900px){
+  #main{grid-template-columns:1fr;grid-template-rows:auto 1fr auto}
+  #panel-queue,#panel-actions{max-height:30vh}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ HEADER ═══════════════ -->
+<div id="header">
+  <h1>SOLVULATOR</h1>
+  <span class="sub">v0.4 — צינור עיבוד משפטי</span>
+  <span id="tokenChip" class="chip off" onclick="toggleTokenPanel()" style="cursor:pointer" title="Click to manage token">Token Required</span>
+  <span class="sub" style="margin-right:auto;direction:ltr" id="health-status"></span>
+</div>
+
+<!-- ═══════════════ TOKEN PANEL (dropdown) ═══════════════ -->
+<div id="token-panel" style="display:none;position:absolute;top:42px;right:16px;z-index:200;
+  width:360px;background:var(--bg-panel);border:1px solid var(--gold-dim);border-radius:3px;
+  padding:14px;box-shadow:0 4px 20px rgba(0,0,0,0.6)">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <span style="font-size:11px;color:var(--gold);letter-spacing:2px">TOKEN MANAGEMENT</span>
+    <span onclick="toggleTokenPanel()" style="cursor:pointer;color:var(--text-mute);font-size:14px">&times;</span>
+  </div>
+
+  <div id="tp-status" style="font-size:10px;color:var(--text-dim);margin-bottom:10px;padding:6px 8px;
+    border:1px solid var(--border);border-radius:2px;background:var(--bg)">
+    No active token. Mint a pilot token to unlock features.
+  </div>
+
+  <!-- Have a token -->
+  <div style="font-size:9px;color:var(--text-mute);margin-bottom:4px">Already have a token? Paste it:</div>
+  <div style="display:flex;gap:4px;margin-bottom:10px">
+    <input id="tp-input" class="inp" placeholder="PILOT-XXXXXXXXXX.sig" style="flex:1"/>
+    <button class="btn" onclick="validateToken()">Verify</button>
+  </div>
+
+  <!-- Mint new -->
+  <div style="border-top:1px solid var(--border);padding-top:10px;margin-bottom:10px">
+    <div style="font-size:9px;color:var(--text-mute);margin-bottom:6px">Or mint a new pilot token (free):</div>
+    <button class="btn primary" onclick="mintToken();toggleTokenPanel()" style="width:100%">Mint Pilot Token — Free</button>
+  </div>
+
+  <!-- Tiers -->
+  <div style="border-top:1px solid var(--border);padding-top:10px">
+    <div style="font-size:9px;color:var(--gold-dim);letter-spacing:1px;margin-bottom:6px">TOKEN TIERS</div>
+    <div style="font-size:9px;color:var(--text-dim);line-height:1.7">
+      <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)">
+        <span><strong style="color:var(--green-bright)">PILOT</strong> — free</span>
+        <span>LATHE + pipeline + read</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)">
+        <span><strong style="color:var(--gold)">EXPORT</strong> — 49 ₪</span>
+        <span>+ JSON export + PDF</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0">
+        <span><strong style="color:var(--blue)">DISPATCH</strong> — 149 ₪</span>
+        <span>+ Net HaMishpat filing + mail</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- API Key shortcut -->
+  <div style="border-top:1px solid var(--border);padding-top:10px;margin-top:10px">
+    <div style="font-size:9px;color:var(--text-mute);margin-bottom:4px">API key (Gemini/OpenRouter/Anthropic):</div>
+    <div style="display:flex;gap:4px">
+      <input id="tp-apikey" class="inp" placeholder="AIza... / sk-or-... / sk-ant-..." style="flex:1"/>
+      <button class="btn" onclick="submitKeyFromPanel()">Set</button>
+    </div>
+    <div id="tp-keystatus" style="font-size:9px;color:var(--text-mute);margin-top:4px"></div>
+  </div>
+</div>
+
+<!-- ═══════════════ MAIN ═══════════════ -->
+<div id="main">
+
+  <!-- LEFT: Queue -->
+  <div id="panel-queue">
+    <div class="panel-head">תור מסמכים — QUEUE</div>
+    <div id="queue-list"></div>
+  </div>
+
+  <!-- CENTER: Pipeline -->
+  <div id="panel-center">
+    <div id="doc-header">
+      <span id="doc-title">—</span>
+      <span id="doc-stage"></span>
+      <span id="doc-status"></span>
+    </div>
+    <div id="pipeline"></div>
+  </div>
+
+  <!-- RIGHT: Actions -->
+  <div id="panel-actions">
+    <div class="panel-head">פעולות — ACTIONS</div>
+    <div id="action-body">
+
+      <div id="err-banner"></div>
+
+      <!-- API Key + Sheets Setup -->
+      <div class="act-card">
+        <h3>SETUP — הגדרות</h3>
+        <div style="font-size:9px;color:var(--text-mute);margin-bottom:6px">
+          Paste any API key — auto-detects provider (Anthropic/Gemini/OpenRouter)
+        </div>
+        <div style="display:flex;gap:4px;margin-bottom:6px">
+          <input id="apiKeyInput" class="inp" placeholder="sk-ant-... / AIza... / sk-or-..." style="flex:1"/>
+          <button class="btn" onclick="submitKey()">Set</button>
+        </div>
+        <div id="keyStatus" style="font-size:9px;color:var(--text-mute);margin-bottom:8px"></div>
+
+        <div style="font-size:9px;color:var(--text-mute);margin-bottom:4px">
+          Google Sheet URL (publish as CSV — File → Share → Publish to web → CSV)
+        </div>
+        <div style="display:flex;gap:4px;margin-bottom:4px">
+          <input id="sheetUrl" class="inp" placeholder="https://docs.google.com/spreadsheets/d/.../export?format=csv" style="flex:1"/>
+          <button class="btn" onclick="loadSheet()">Load</button>
+        </div>
+        <div id="sheetStatus" style="font-size:9px;color:var(--text-mute);margin-bottom:4px"></div>
+        <details style="font-size:9px;color:var(--text-mute);margin-top:4px">
+          <summary style="cursor:pointer;color:var(--gold-dim)">Sheet Setup Instructions</summary>
+          <div style="padding:6px 0;line-height:1.6">
+            1. Create a Google Sheet with columns:<br/>
+            <code style="font-size:8px;color:var(--gold);background:var(--bg);padding:1px 3px">SV_ID, Stage, Status, Source, Document_Type, Urgency, Amount, Notes</code><br/>
+            2. Status values: PENDING, RUNNING, DONE, BLOCKED<br/>
+            3. Urgency values: high, medium, low<br/>
+            4. File → Share → Publish to web → choose CSV → Copy link<br/>
+            5. Paste the link above and click Load
+          </div>
+        </details>
+      </div>
+
+      <!-- Token Gate -->
+      <div id="token-gate">
+        <h3 style="font-size:10px;color:var(--gold);letter-spacing:1px;margin-bottom:6px;font-weight:400">TOKEN GATE</h3>
+        <div id="tgStatus" style="font-size:10px;color:var(--text-dim);margin-bottom:6px">No token — mint to unlock features</div>
+        <input id="tokenInput" class="inp" placeholder="PILOT-XXXXXXXXXX.sig" readonly style="margin-bottom:6px"/>
+        <button class="btn primary" onclick="mintToken()">Mint Pilot Token</button>
+      </div>
+
+      <!-- LATHE -->
+      <div class="act-card">
+        <h3>LATHE — ניתוח טיעונים</h3>
+        <textarea id="goalInput" class="inp" placeholder="מטרת הניתוח (אופציונלי)"></textarea>
+        <div style="margin-top:6px;display:flex;gap:6px">
+          <button class="btn primary" onclick="runLathe()">Run LATHE</button>
+          <button class="btn" onclick="runDiagnose()">:diagnose</button>
+        </div>
+      </div>
+
+      <!-- Agent Loops -->
+      <div class="act-card">
+        <h3>AGENT LOOPS — לולאות סוכנים</h3>
+        <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center">
+          <span style="font-size:9px;color:var(--text-mute);width:40px">Lanes</span>
+          <input id="loopLanes" class="inp" type="number" value="3" min="1" max="7" style="width:50px"/>
+          <span style="font-size:9px;color:var(--text-mute);width:40px">Steps</span>
+          <input id="loopSteps" class="inp" type="number" value="5" min="1" max="30" style="width:50px"/>
+          <button class="btn" onclick="startLoop()">Run</button>
+        </div>
+        <div id="loopStatus" style="font-size:9px;color:var(--text-mute)"></div>
+      </div>
+
+      <!-- Claude Agent -->
+      <div class="act-card">
+        <h3>CLAUDE — שאלה חופשית</h3>
+        <textarea id="claudePrompt" class="inp" placeholder="שאל שאלה על המסמך..."></textarea>
+        <button class="btn" onclick="runClaude()" style="margin-top:6px">Ask Claude</button>
+      </div>
+
+      <!-- Export -->
+      <div class="act-card">
+        <h3>EXPORT</h3>
+        <button id="btnExport" class="btn" onclick="exportDoc()" disabled>Export JSON</button>
+      </div>
+
+      <!-- Output -->
+      <div class="act-card" style="flex:1">
+        <h3>OUTPUT</h3>
+        <div id="output-area">—</div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<!-- ═══════════════════════════════════════════════════════
+     JAVASCRIPT
+     ═══════════════════════════════════════════════════════ -->
+<script>
+// ── Agent Definitions ──────────────────────────────────
+const AGENTS = [
+  {id:"01_intake",   name:"Intake & Classification",   he:"קליטה וסיווג",       human:true},
+  {id:"02_ocr",      name:"OCR & Text Integrity",      he:"סריקה ואימות טקסט",  human:true},
+  {id:"03_operative",name:"Operative Extraction",       he:"חילוץ הוראות",       human:true},
+  {id:"04_structure",name:"Legal Structure Mapper",     he:"מיפוי מבני",         human:false},
+  {id:"05_weakness", name:"Weakness Detector",          he:"גילוי חולשות",       human:false},
+  {id:"06_foi",      name:"FOI Trigger Analyzer",       he:"חופש מידע",          human:false},
+  {id:"07_damage",   name:"Damage Exposure",            he:"חשיפה נזקית",        human:false},
+  {id:"08_strategy", name:"Strategy Builder",           he:"אסטרטגיה",           human:true},
+  {id:"09_draft",    name:"Draft Generator",            he:"טיוטה",              human:true},
+  {id:"10_verify",   name:"Human Verification",         he:"אימות אנושי",        human:true},
+  {id:"11_filing",   name:"Filing & Dispatch",          he:"שליחה",              human:true},
+  {id:"12_meta",     name:"Meta-Pattern Recorder",      he:"דפוסים",             human:false},
+];
+
+// ── Seed Data ──────────────────────────────────────────
+const INITIAL_DOCS = [
+  {
+    id:'SV-001', caseNum:'SV-001', court:'magistrate', type:'decision',
+    urgency:'high', stage:3, status:'done', date:'2026-01-15',
+    goal:'ערעור על החלטה — דחיית בקשת דחייה',
+    ctx:'בית משפט השלום — עתירה מנהלית',
+    doc:'בפני בית המשפט עתירה מנהלית. המבקש טוען כי ההחלטה מיום 15.1.2026 ניתנה ללא שימוע. העותר מבקש לבטל את ההחלטה מחמת פגם בהליך.',
+    savedOutputs:{},
+  },
+  {
+    id:'SV-002', caseNum:'SV-002', court:'enforcement', type:'demand',
+    urgency:'medium', stage:1, status:'pending', date:'2026-02-08',
+    goal:'בדיקת חוקיות דרישת תשלום',
+    ctx:'הוצאה לפועל — דרישת תשלום',
+    doc:'דרישת תשלום מס\' 2026/4421. סכום: 18,500 ש"ח. המועד האחרון לתשלום: 08.03.2026. החייב רשאי להגיש התנגדות בתוך 20 יום.',
+    savedOutputs:{},
+  },
+  {
+    id:'SV-003', caseNum:'SV-003', court:'municipality', type:'notice',
+    urgency:'low', stage:0, status:'pending', date:'2026-03-01',
+    goal:'בדיקת תקינות הודעה מנהלית',
+    ctx:'עירייה — הודעה על חריגת בנייה',
+    doc:'הודעה על חריגת בנייה לפי סעיף 204 לחוק התכנון והבניה. יש להסיר את החריגה בתוך 30 יום או להגיש בקשה להיתר.',
+    savedOutputs:{},
+  },
+];
+
+// ── State ──────────────────────────────────────────────
+let docs = JSON.parse(JSON.stringify(INITIAL_DOCS));
+let currentDocId = null;
+
+const ST = {
+  token: null,
+  tokenValid: false,
+};
+
+// ── Utilities ──────────────────────────────────────────
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function flash(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+function showErr(msg){
+  const el=document.getElementById('err-banner');
+  el.textContent=msg; el.style.display='block';
+  setTimeout(()=>{el.style.display='none'},6000);
+}
+
+function setOutput(html){
+  document.getElementById('output-area').innerHTML=html;
+}
+
+function getCurrentDoc(){
+  return docs.find(d=>d.id===currentDocId);
+}
+
+// ── Render Queue ───────────────────────────────────────
+function renderQueue(){
+  const el=document.getElementById('queue-list');
+  el.innerHTML='';
+  docs.forEach(d=>{
+    const div=document.createElement('div');
+    div.className='q-item'+(d.id===currentDocId?' active':'');
+    const urgClass=d.urgency||'low';
+    div.innerHTML=`<div class="q-id">${esc(d.caseNum||d.id)} <span class="q-badge ${urgClass}">${urgClass}</span></div>
+      <div class="q-meta">${esc(d.court||'?')} · ${esc(d.type||'?')} · שלב ${d.stage||0}</div>`;
+    div.onclick=()=>selectDoc(d.id);
+    el.appendChild(div);
+  });
+}
+
+// ── Render Pipeline Nodes ──────────────────────────────
+function renderNodes(){
+  const el=document.getElementById('pipeline');
+  const doc=getCurrentDoc();
+  if(!doc){el.innerHTML='<div style="text-align:center;padding:40px;color:var(--text-mute)">בחר מסמך מהתור</div>';return;}
+  let html='';
+  AGENTS.forEach((agent,i)=>{
+    const stageNum=i+1;
+    let status='pending';
+    if(doc.stage>stageNum) status='done';
+    else if(doc.stage===stageNum) status='running';
+    const humanClass=agent.human?' human-gate':'';
+    const statusClass=status==='done'?'pass':status==='running'?'active':'wait';
+    const statusChar=status==='done'?'✓':status==='running'?'⟳':'·';
+    const saved=doc.savedOutputs&&doc.savedOutputs[agent.id];
+
+    html+=`<div class="node ${status}${humanClass}">
+      <div class="node-head">
+        <span class="node-num">${String(stageNum).padStart(2,'0')}</span>
+        <span class="node-name">${agent.name}</span>
+        <span class="node-he">${agent.he}</span>
+        ${agent.human?'<span class="human-tag">שער אנושי</span>':''}
+        <span class="node-status ${statusClass}">${statusChar}</span>
+      </div>`;
+    if(saved){
+      const preview=typeof saved==='string'?saved.slice(0,300):JSON.stringify(saved,null,2).slice(0,300);
+      html+=`<div class="node-body">${esc(preview)}</div>`;
+    }
+    html+=`</div>`;
+  });
+  el.innerHTML=html;
+}
+
+// ── Select Document ────────────────────────────────────
+function selectDoc(id){
+  currentDocId=id;
+  const doc=getCurrentDoc();
+  if(!doc) return;
+  document.getElementById('doc-title').textContent=`${doc.caseNum} — ${doc.court||''}`;
+  document.getElementById('doc-stage').textContent=`שלב ${doc.stage||0}/12`;
+  const statusEl=document.getElementById('doc-status');
+  statusEl.textContent=(doc.status||'pending').toUpperCase();
+  statusEl.style.color=doc.status==='done'?'var(--green-bright)':doc.status==='running'?'var(--gold)':'var(--text-dim)';
+  renderQueue();
+  renderNodes();
+}
+
+// ── Token Panel ────────────────────────────────────────
+function toggleTokenPanel(){
+  const p=document.getElementById('token-panel');
+  p.style.display=p.style.display==='none'?'block':'none';
+  if(p.style.display==='block') updateTokenPanelStatus();
+}
+
+function updateTokenPanelStatus(){
+  const el=document.getElementById('tp-status');
+  if(ST.tokenValid){
+    el.innerHTML=`<span style="color:var(--green-bright)">✓ Active token:</span> ${ST.token}<br/>
+      <span style="font-size:9px;color:var(--text-mute)">Pipeline, LATHE, and export are unlocked.</span>`;
+    el.style.borderColor='var(--green-bright)';
+  } else {
+    el.innerHTML=`<span style="color:var(--red)">No active token.</span> Mint a free pilot token or paste an existing one.<br/>
+      <span style="font-size:9px;color:var(--text-mute)">Without a token: pipeline runs but export is locked.</span>`;
+    el.style.borderColor='var(--border)';
+  }
+}
+
+async function validateToken(){
+  const tok=document.getElementById('tp-input').value.trim();
+  if(!tok){showErr('Paste a token');return;}
+  try{
+    const r=await fetch('/token/check?token='+encodeURIComponent(tok));
+    const d=await r.json();
+    if(d.valid){
+      ST.token=tok; ST.tokenValid=true;
+      document.getElementById('tokenInput').value=tok;
+      document.getElementById('tokenChip').className='chip live';
+      document.getElementById('tokenChip').textContent='Token Active';
+      document.getElementById('tgStatus').innerHTML=
+        `<strong style="color:var(--green-bright)">TOKEN VALID</strong> — ${tok}`;
+      document.getElementById('btnExport').classList.add('unlocked');
+      document.getElementById('btnExport').disabled=false;
+      updateTokenPanelStatus();
+      flash('Token verified: scope='+d.scope);
+    } else {
+      showErr('Token invalid: '+(d.reason||'unknown'));
+      document.getElementById('tp-status').innerHTML=
+        `<span style="color:var(--red)">Invalid:</span> ${d.reason||'unknown'}`;
+    }
+  }catch(e){showErr('Verification failed: '+e.message);}
+}
+
+async function submitKeyFromPanel(){
+  const key=document.getElementById('tp-apikey').value.trim();
+  if(!key){showErr('Paste an API key');return;}
+  const el=document.getElementById('tp-keystatus');
+  el.textContent='Setting...';el.style.color='var(--gold)';
+  try{
+    const r=await fetch('/api/key',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key})});
+    const d=await r.json();
+    if(d.ok){
+      el.innerHTML=`<span style="color:var(--green-bright)">✓ ${d.provider}</span> ${d.key_prefix}`;
+      document.getElementById('tp-apikey').value='';
+      // Also update the setup panel if visible
+      document.getElementById('apiKeyInput').value='';
+      document.getElementById('keyStatus').innerHTML=el.innerHTML;
+      checkHealth();
+      flash('Key set: '+d.provider);
+    } else {
+      el.textContent='Error: '+(d.error||'?');el.style.color='var(--red)';
+    }
+  }catch(e){el.textContent='Failed: '+e.message;el.style.color='var(--red)';}
+}
+
+// Close panel on click outside
+document.addEventListener('click',function(e){
+  const panel=document.getElementById('token-panel');
+  const chip=document.getElementById('tokenChip');
+  if(panel.style.display==='block' && !panel.contains(e.target) && e.target!==chip){
+    panel.style.display='none';
+  }
+});
+
+// ── PATCHED: streamClaude — proxy through backend ──────
+async function streamClaude(prompt, onToken){
+  const r=await fetch('/agent/claude',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({prompt, max_tokens:1000})
+  });
+  if(!r.ok){const e=await r.json();throw new Error(e.error||`API ${r.status}`);}
+  const data = await r.json();
+  const text = data.text || '';
+  if(onToken) onToken('', text);
+  return text;
+}
+
+// ── PATCHED: mintToken — proxy through backend ─────────
+async function mintToken(){
+  try {
+    const resp = await fetch('/token/mint', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({scope: 'PILOT'})
+    });
+    const data = await resp.json();
+    if(!data.token){ showErr('Token mint failed'); return; }
+    const tok = data.token;
+    document.getElementById('tokenInput').value = tok;
+    ST.token = tok; ST.tokenValid = true;
+    document.getElementById('tgStatus').innerHTML =
+      `<strong style="color:var(--green-bright);">TOKEN VALID</strong> — ${tok}`;
+    document.getElementById('tokenChip').className = 'chip live';
+    document.getElementById('tokenChip').textContent = 'Export Unlocked';
+    document.getElementById('btnExport').classList.add('unlocked');
+  } catch(e) { showErr('Token mint error: ' + e.message); }
+}
+
+// ── Run LATHE ──────────────────────────────────────────
+async function runLathe(){
+  const doc=getCurrentDoc();
+  if(!doc){showErr('בחר מסמך תחילה');return;}
+  if(!doc.doc){showErr('אין טקסט למסמך');return;}
+  const goal=document.getElementById('goalInput').value||doc.goal||'';
+  setOutput('LATHE running...');
+  try{
+    const r=await fetch('/agent/lathe',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({doc_text:doc.doc, goal:goal, lang:'Hebrew'})
+    });
+    const data=await r.json();
+    if(data.error){showErr('LATHE error: '+data.error);setOutput('Error: '+esc(data.error));return;}
+    doc.savedOutputs=doc.savedOutputs||{};
+    doc.savedOutputs['lathe']=data;
+    setOutput(formatLatheResult(data));
+    flash('LATHE complete');
+    renderNodes();
+  }catch(e){showErr('LATHE failed: '+e.message);setOutput('Error: '+esc(e.message));}
+}
+
+// ── Run :diagnose ──────────────────────────────────────
+async function runDiagnose(){
+  const doc=getCurrentDoc();
+  if(!doc){showErr('בחר מסמך תחילה');return;}
+  if(!doc.doc){showErr('אין טקסט למסמך');return;}
+  setOutput(':diagnose running...');
+  const prompt=`You are LATHE :diagnose — concise legal argument health check.
+Analyze this document and report: (1) argument integrity score 0-1, (2) top 3 weaknesses with type (distortion/projection/fixation/assertion), (3) one-line repair hint per weakness.
+OUTPUT: Plain text, numbered. Keep it under 300 words. Language: Hebrew.
+
+DOCUMENT:
+${doc.doc.slice(0,2000)}`;
+  try{
+    const text=await streamClaude(prompt);
+    setOutput(formatLatheREPL(text));
+  }catch(e){showErr(':diagnose failed: '+e.message);setOutput('Error: '+esc(e.message));}
+}
+
+// ── Format LATHE Result ────────────────────────────────
+function formatLatheResult(data){
+  let html='';
+  // integrity score
+  const score=data.litigation_integrity_score;
+  if(score!==undefined){
+    const cls=score>=0.7?'good':score>=0.4?'mid':'bad';
+    html+=`<div class="lathe-score ${cls}">${(score*100).toFixed(0)}%</div>`;
+    html+=`<div style="text-align:center;font-size:9px;color:var(--text-mute);margin-bottom:10px">Litigation Integrity Score</div>`;
+  }
+  // summary
+  if(data.lathe_summary){
+    html+=`<div style="padding:6px 0;font-size:10px;color:var(--text);border-bottom:1px solid var(--border);margin-bottom:8px">${esc(data.lathe_summary)}</div>`;
+  }
+  // failures
+  if(data.failure_analysis&&data.failure_analysis.length){
+    html+=`<div style="font-size:9px;color:var(--gold);letter-spacing:1px;margin:6px 0">FAILURE ANALYSIS</div>`;
+    data.failure_analysis.forEach(fa=>{
+      (fa.failures||[]).forEach(f=>{
+        html+=`<div class="failure-item">
+          <span class="failure-type ${f.type||''}">${(f.type||'?').toUpperCase()}</span>
+          <span style="color:var(--text)">${esc(f.reason||'')}</span>
+          ${f.severity?`<span style="font-size:8px;color:var(--text-mute);margin-right:6px">[${f.severity}]</span>`:''}
+        </div>`;
+      });
+    });
+  }
+  // claims
+  if(data.claims&&data.claims.length){
+    html+=`<div style="font-size:9px;color:var(--gold);letter-spacing:1px;margin:8px 0">CLAIMS (${data.claims.length})</div>`;
+    data.claims.forEach(c=>{
+      html+=`<div style="font-size:10px;padding:4px 0;border-bottom:1px solid var(--border)">
+        <span style="color:var(--blue)">${esc(c.id)}</span> ${esc(c.text||'')}
+        <span style="font-size:8px;color:var(--text-mute)">[${c.type||'?'} support:${c.support_score} fragility:${c.fragility_score}]</span>
+      </div>`;
+    });
+  }
+  // repairs
+  if(data.repairs&&data.repairs.length){
+    html+=`<div style="font-size:9px;color:var(--gold);letter-spacing:1px;margin:8px 0">REPAIRS</div>`;
+    data.repairs.forEach(r=>{
+      html+=`<div style="font-size:10px;padding:4px 0;border-bottom:1px solid var(--border)">
+        <span style="color:var(--green-bright)">${esc(r.repair_strategy||'')}</span>:
+        ${esc(r.repaired||'')}
+      </div>`;
+    });
+  }
+  // counterarguments
+  if(data.counterarguments&&data.counterarguments.length){
+    html+=`<div style="font-size:9px;color:var(--gold);letter-spacing:1px;margin:8px 0">COUNTERARGUMENTS</div>`;
+    data.counterarguments.forEach(ca=>{
+      html+=`<div style="font-size:10px;padding:4px 0;border-bottom:1px solid var(--border)">
+        ${esc(ca.text||'')}
+        <span style="font-size:8px;color:var(--text-mute)">[strength:${ca.strength}]</span>
+      </div>`;
+    });
+  }
+  if(!html) html=`<pre>${esc(JSON.stringify(data,null,2))}</pre>`;
+  return html;
+}
+
+// ── Format LATHE REPL ──────────────────────────────────
+function formatLatheREPL(text){
+  let s='LATHE — :diagnose result\n\n';
+  s+=text;
+  return `<pre style="white-space:pre-wrap">${esc(s)}</pre>`;
+}
+
+// ── Run Claude ─────────────────────────────────────────
+async function runClaude(){
+  const doc=getCurrentDoc();
+  const promptEl=document.getElementById('claudePrompt');
+  const userPrompt=promptEl.value.trim();
+  if(!userPrompt){showErr('הכנס שאלה');return;}
+  const fullPrompt=doc?`Context document (${doc.caseNum}):\n${doc.doc}\n\nUser question: ${userPrompt}`:`User question: ${userPrompt}`;
+  setOutput('Claude thinking...');
+  try{
+    const text=await streamClaude(fullPrompt);
+    setOutput(`<pre style="white-space:pre-wrap">${esc(text)}</pre>`);
+    flash('Claude response received');
+  }catch(e){showErr('Claude error: '+e.message);setOutput('Error: '+esc(e.message));}
+}
+
+// ── API Key Submission ─────────────────────────────────
+async function submitKey(){
+  const key=document.getElementById('apiKeyInput').value.trim();
+  if(!key){showErr('Paste an API key');return;}
+  const el=document.getElementById('keyStatus');
+  el.textContent='Setting key...'; el.style.color='var(--gold)';
+  try{
+    const r=await fetch('/api/key',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key})});
+    const d=await r.json();
+    if(d.ok){
+      el.innerHTML=`<span style="color:var(--green-bright)">✓ ${d.provider}</span> — ${d.key_prefix} `+
+        Object.entries(d.keys_active).map(([k,v])=>`<span style="color:${v?'var(--green-bright)':'var(--text-mute)'}">${k}:${v?'on':'off'}</span>`).join(' ');
+      document.getElementById('apiKeyInput').value='';
+      flash('Key set: '+d.provider);
+      checkHealth();
+    } else {
+      el.textContent='Error: '+(d.error||'unknown'); el.style.color='var(--red)';
+    }
+  }catch(e){el.textContent='Failed: '+e.message; el.style.color='var(--red)';}
+}
+
+// ── Sheet Loading ──────────────────────────────────────
+async function loadSheet(){
+  const url=document.getElementById('sheetUrl').value.trim();
+  if(!url){showErr('Paste a Google Sheet CSV URL');return;}
+  const el=document.getElementById('sheetStatus');
+  el.textContent='Loading sheet...'; el.style.color='var(--gold)';
+  try{
+    // First tell the backend about the sheet URL
+    const r=await fetch('/sheet/reload',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({source:url})});
+    const d=await r.json();
+    if(d.reloading){
+      el.textContent='Reloading from source...'; el.style.color='var(--gold)';
+      // Poll for ready state
+      let tries=0;
+      const poll=setInterval(async()=>{
+        tries++;
+        if(tries>15){clearInterval(poll);el.textContent='Timeout — check URL';el.style.color='var(--red)';return;}
+        try{
+          const sr=await fetch('/sheet/state');
+          const sd=await sr.json();
+          if(sd.state==='ready'){
+            clearInterval(poll);
+            el.innerHTML=`<span style="color:var(--green-bright)">✓ ${sd.valid} valid rows, ${sd.invalid} invalid</span>`;
+            flash('Sheet loaded: '+sd.total+' rows');
+            // Reload docs from sheet
+            initFromSheet();
+          } else if(sd.state==='error'){
+            clearInterval(poll);
+            el.textContent='Sheet error: '+(sd.error||'?');el.style.color='var(--red)';
+          }
+        }catch{}
+      },1500);
+    }
+  }catch(e){el.textContent='Failed: '+e.message;el.style.color='var(--red)';}
+}
+
+// ── Agent Loop Control ─────────────────────────────────
+async function startLoop(){
+  const lanes=parseInt(document.getElementById('loopLanes').value)||3;
+  const steps=parseInt(document.getElementById('loopSteps').value)||5;
+  const el=document.getElementById('loopStatus');
+  el.textContent=`Starting ${lanes}L × ${steps}S...`; el.style.color='var(--gold)';
+  try{
+    const r=await fetch('/api/loop/start',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({lanes,steps})});
+    const d=await r.json();
+    if(d.started){
+      el.textContent=`Running: ${lanes}L × ${steps}S (${d.model})`;el.style.color='var(--green-bright)';
+      flash('Agent loop started');
+      pollLoopStatus();
+    } else {
+      el.textContent=d.error||'Failed to start';el.style.color='var(--red)';
+    }
+  }catch(e){el.textContent='Error: '+e.message;el.style.color='var(--red)';}
+}
+
+function pollLoopStatus(){
+  const el=document.getElementById('loopStatus');
+  const iv=setInterval(async()=>{
+    try{
+      const r=await fetch('/api/loop/status');
+      const d=await r.json();
+      if(d.running){
+        el.textContent=`Running: ${d.lanes||'?'}L × ${d.steps||'?'}S since ${(d.started_at||'').slice(11,19)}`;
+        el.style.color='var(--gold)';
+      } else {
+        clearInterval(iv);
+        if(d.error){
+          el.textContent='Error: '+d.error.slice(0,80);el.style.color='var(--red)';
+        } else {
+          el.textContent='✓ Complete';el.style.color='var(--green-bright)';
+          flash('Agent loop complete');
+        }
+      }
+    }catch{clearInterval(iv);}
+  },3000);
+}
+
+// ── Export ──────────────────────────────────────────────
+function exportDoc(){
+  if(!ST.tokenValid){showErr('Mint a token first');return;}
+  const doc=getCurrentDoc();
+  if(!doc){showErr('בחר מסמך תחילה');return;}
+  const payload={
+    exported_at:new Date().toISOString(),
+    token:ST.token,
+    document:doc,
+  };
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`${doc.id}_export.json`;
+  a.click();
+  flash('Exported: '+doc.id);
+}
+
+// ── Health Check ───────────────────────────────────────
+async function checkHealth(){
+  try{
+    const r=await fetch('/health');
+    const d=await r.json();
+    const el=document.getElementById('health-status');
+    if(d.ok){
+      el.textContent=`system:ok sheet:${d.sheet_state} api:${d.api_key_set?'ready':'no-key'}`;
+      el.style.color='var(--green-bright)';
+    }else{
+      el.textContent='system:error';
+      el.style.color='var(--red)';
+    }
+  }catch(e){
+    document.getElementById('health-status').textContent='offline';
+    document.getElementById('health-status').style.color='var(--red)';
+  }
+}
+
+// ── PATCHED: Init from Sheet ───────────────────────────
+async function initFromSheet() {
+  try {
+    const resp = await fetch('/sheet/view?density=focused');
+    if(!resp.ok){ console.warn('Sheet not ready, using seed data'); initFallback(); return; }
+    const data = await resp.json();
+    if(!data.rows || !data.rows.length){ initFallback(); return; }
+    docs = data.rows.map(r => ({
+      id: r.sv_id,
+      caseNum: r.sv_id,
+      court: r.source || '?',
+      type: r.document_type || 'decision',
+      urgency: r.urgency || 'medium',
+      stage: r.stage || 0,
+      status: (r.status||'PENDING').toLowerCase(),
+      date: '',
+      goal: '',
+      ctx: '',
+      doc: r.clean_text || '',
+      savedOutputs: {},
+    }));
+    renderQueue();
+    renderNodes();
+    if(docs.length) selectDoc(docs[0].id);
+  } catch(e) {
+    console.warn('Sheet fetch failed:', e.message);
+    initFallback();
+  }
+}
+
+function initFallback() {
+  docs = JSON.parse(JSON.stringify(INITIAL_DOCS));
+  renderQueue(); renderNodes(); selectDoc('SV-001');
+}
+
+initFromSheet();
+checkHealth();
+</script>
+</body>
+</html>

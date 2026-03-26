@@ -1,0 +1,6 @@
+SV_ID,Stage,Status,Source,Document_Type,Urgency,Amount
+SV-HCJ78240,4,DONE,HCJ,החלטה,high,1500
+SV-TA1204,2,BLOCKED,Magistrate-Hadera,החלטה,high,0
+SV-003,1,PENDING,הוצאה לפועל,דרישה,medium,18500
+SV-004,5,RUNNING,שלום,תגובה,low,0
+SV-005,8,DONE,מחוזי,פסק דין,low,0
