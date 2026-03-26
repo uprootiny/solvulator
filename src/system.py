@@ -87,10 +87,19 @@ DOCUMENTS = {}
 ALLOWED_DOC_TYPES = {".pdf", ".jpg", ".jpeg", ".png", ".heic", ".txt", ".csv", ".json", ".html", ".htm"}
 
 def _sanitize_filename(name):
-    """Strip path components and unsafe chars, keep extension."""
+    """Strip path components and unsafe chars, keep extension. Preserve Hebrew/Unicode."""
     name = Path(name).name
-    name = re.sub(r'[^\w.\-]', '_', name)
-    return name or "unnamed"
+    # Remove control chars and path separators, keep Unicode letters/digits
+    name = re.sub(r'[\x00-\x1f/\\:*?"<>|]', '_', name)
+    # Collapse multiple underscores
+    name = re.sub(r'_+', '_', name).strip('_')
+    # If still too long or empty, truncate
+    if not name:
+        name = "unnamed"
+    if len(name) > 200:
+        ext = Path(name).suffix
+        name = name[:200-len(ext)] + ext
+    return name
 
 def _mime_for_path(p):
     mt, _ = mimetypes.guess_type(str(p))
@@ -840,9 +849,13 @@ class Handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD")
         self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
         self.end_headers()
+
+    def do_HEAD(self):
+        """Handle HEAD requests (PDF viewers send HEAD before GET)."""
+        self.do_GET()
 
     def do_GET(self):
         path = urlparse(self.path).path
@@ -1322,7 +1335,13 @@ class Handler(BaseHTTPRequestHandler):
         """Write bytes to uploads/, register in DOCUMENTS, return metadata."""
         safe = _sanitize_filename(filename)
         ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        stored_name = f"{ts}_{safe}"
+        # Generate ASCII-safe doc_id (hash-based for non-ASCII filenames)
+        stem = Path(safe).stem
+        ext = Path(safe).suffix
+        ascii_stem = re.sub(r'[^a-zA-Z0-9._-]', '', stem)
+        if not ascii_stem or len(ascii_stem) < 3:
+            ascii_stem = hashlib.md5(safe.encode()).hexdigest()[:12]
+        stored_name = f"{ts}_{ascii_stem}{ext}"
         dest = UPLOADS_DIR / stored_name
         dest.write_bytes(data)
         doc_id = dest.stem
@@ -1378,7 +1397,7 @@ class Handler(BaseHTTPRequestHandler):
             file_bytes, filename, fields = self._read_multipart()
             if not file_bytes or not filename:
                 self.send_err("No file in multipart upload", 400); return
-            sv_id = fields.get("sv_id", "")
+            sv_id = fields.get("sv_id", fields.get("case_id", ""))
             meta = self._store_doc(file_bytes, filename, sv_id=sv_id)
             self.send_json(meta, 201)
             return

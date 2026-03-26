@@ -1320,8 +1320,27 @@ function saveDocState() {
   localStorage.setItem('sv-docs', JSON.stringify(state.documents));
 }
 
+async function syncDocsFromBackend() {
+  try {
+    const resp = await fetch(API + '/doc/list');
+    const data = await resp.json();
+    if(data.documents) {
+      // Merge: backend docs as authoritative, keep local-only docs
+      const backendIds = new Set(data.documents.map(d => d.doc_id));
+      const localOnly = state.documents.filter(d => d.local && !backendIds.has(d.id));
+      state.documents = data.documents.map(d => ({
+        id: d.doc_id, name: d.filename, type: d.type,
+        size: d.size, date: d.uploaded_at,
+        case_id: d.sv_id || null, mime: d.type,
+        url: API + '/doc/' + d.doc_id,
+      })).concat(localOnly);
+      saveDocState();
+    }
+  } catch(e) { console.log('Doc sync unavailable'); }
+}
+
 function getDocsForCase(svId) {
-  return state.documents.filter(d => d.case_id === svId || !d.case_id);
+  return state.documents.filter(d => d.case_id === svId);
 }
 
 function docTypeIcon(mime, name) {
@@ -1398,7 +1417,10 @@ async function uploadFile(file) {
 
   const formData = new FormData();
   formData.append('file', file);
-  if (state.selectedCase) formData.append('case_id', state.selectedCase.sv_id);
+  if (state.selectedCase) {
+    formData.append('sv_id', state.selectedCase.sv_id);
+    formData.append('case_id', state.selectedCase.sv_id);
+  }
 
   try {
     bar.style.width = '40%';
@@ -1408,7 +1430,7 @@ async function uploadFile(file) {
     bar.style.width = '100%';
 
     const doc = {
-      id: data.id || ('doc-' + Date.now()),
+      id: data.doc_id || data.id || ('doc-' + Date.now()),
       name: file.name,
       type: file.type || 'application/octet-stream',
       size: file.size,
@@ -1471,7 +1493,7 @@ async function submitLink() {
     bar.style.width = '100%';
 
     const doc = {
-      id: data.id || ('doc-' + Date.now()),
+      id: data.doc_id || data.id || ('doc-' + Date.now()),
       name: data.name || url.split('/').pop() || 'Link document',
       type: data.type || 'application/pdf',
       size: data.size || 0,
@@ -1533,7 +1555,7 @@ async function submitPaste() {
     bar.style.width = '100%';
 
     const doc = {
-      id: data.id || ('doc-' + Date.now()),
+      id: data.doc_id || data.id || ('doc-' + Date.now()),
       name: name + '.txt',
       type: 'text/plain',
       size: text.length,
@@ -1923,6 +1945,7 @@ document.addEventListener('wheel', e => {
 // INIT
 // ═══════════════════════════════════════════════
 loadCases();
+syncDocsFromBackend();
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(()=>{});}
 </script>
 </body>
