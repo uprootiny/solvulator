@@ -69,6 +69,7 @@ GEMINI_API_KEY   = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL     = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
 LEGAL_SHEET_ID   = os.environ.get("LEGAL_SHEET_ID", "1cK4F7_5gGB_inEhZieiZdrdVbZOZWqE2phpHEO2WStM")
 LEGAL_SHEET_URL  = os.environ.get("LEGAL_SHEET_URL", f"https://docs.google.com/spreadsheets/d/{LEGAL_SHEET_ID}/export?format=csv")
+DRIVE_FOLDER_ID  = os.environ.get("DRIVE_FOLDER_ID", "1FG27TPmB0LcVl-c7hBcZiFC3aqVk2u8b")
 _or_env = Path.home() / ".env.openrouter"
 if _or_env.exists():
     for _line in _or_env.read_text().splitlines():
@@ -855,6 +856,8 @@ class Handler(BaseHTTPRequestHandler):
             "/api/loop/status": self.h_loop_status_get,
             "/pipeline/runs": self.h_pipeline_list,
             "/doc/list": self.h_doc_list,
+            "/drive/list": self.h_drive_list,
+            "/integration/status": self.h_integration_status,
         }
         if path in routes:
             routes[path]()
@@ -907,6 +910,7 @@ class Handler(BaseHTTPRequestHandler):
             "/pipeline/start": self.h_pipeline_start,
             "/doc/upload": self.h_doc_upload,
             "/doc/from-url": self.h_doc_from_url,
+            "/drive/import": self.h_drive_import,
         }
         if path in routes:
             routes[path]()
@@ -1496,6 +1500,100 @@ class Handler(BaseHTTPRequestHandler):
         if not url:
             self.send_err("url required", 400); return
         self._fetch_and_store_url(url, sv_id=sv_id)
+
+    # ── DRIVE FOLDER INTEGRATION ─────────────────────
+    def h_drive_list(self):
+        """List files in the Apps Script legal documents Drive folder.
+        Requires OAuth token in Authorization header."""
+        token = self.get_token()
+        if not token:
+            self.send_err("OAuth token required (Authorization: Bearer <token>)", 401); return
+        folder_id = self.get_params().get("folder", DRIVE_FOLDER_ID)
+        url = (f"https://www.googleapis.com/drive/v3/files"
+               f"?q=%27{folder_id}%27+in+parents+and+trashed%3Dfalse"
+               f"&fields=files(id,name,mimeType,size,createdTime,webViewLink)"
+               f"&orderBy=createdTime+desc&pageSize=50")
+        req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read())
+            files = data.get("files", [])
+            self.send_json({"folder_id": folder_id, "count": len(files), "files": files})
+        except urllib.error.HTTPError as e:
+            self.send_err(f"Drive API {e.code}: {e.read().decode()[:200]}", e.code)
+
+    def h_drive_import(self):
+        """Import a file from Drive into solvulator uploads.
+        Body: {file_id, sv_id?}. Requires OAuth token."""
+        token = self.get_token()
+        if not token:
+            self.send_err("OAuth token required", 401); return
+        body = self.read_body()
+        file_id = body.get("file_id", "")
+        sv_id = body.get("sv_id", "")
+        if not file_id:
+            self.send_err("file_id required", 400); return
+        # Get file metadata
+        meta_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?fields=name,mimeType,size"
+        meta_req = urllib.request.Request(meta_url, headers={"Authorization": f"Bearer {token}"})
+        try:
+            with urllib.request.urlopen(meta_req, timeout=15) as resp:
+                meta = json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            self.send_err(f"Drive meta {e.code}: {e.read().decode()[:200]}", e.code); return
+        # Download file content
+        dl_url = f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media"
+        dl_req = urllib.request.Request(dl_url, headers={"Authorization": f"Bearer {token}"})
+        try:
+            with urllib.request.urlopen(dl_req, timeout=60) as resp:
+                content = resp.read()
+        except urllib.error.HTTPError as e:
+            self.send_err(f"Drive download {e.code}: {e.read().decode()[:200]}", e.code); return
+        filename = meta.get("name", f"drive-{file_id}")
+        doc_id = _sanitize_filename(f"{time.strftime('%Y%m%d_%H%M%S')}_{filename}")
+        ext = Path(filename).suffix or ".bin"
+        save_path = UPLOADS_DIR / (doc_id + ext)
+        save_path.write_bytes(content)
+        record = {
+            "doc_id": doc_id, "filename": filename,
+            "size": len(content), "type": meta.get("mimeType", "application/octet-stream"),
+            "path": str(save_path), "uploaded_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "sv_id": sv_id, "drive_file_id": file_id,
+        }
+        DOCUMENTS[doc_id] = record
+        self.send_json(record)
+
+    def h_integration_status(self):
+        """Show integration status with Apps Script pipeline."""
+        self.send_json({
+            "apps_script": {
+                "sheet_id": LEGAL_SHEET_ID,
+                "drive_folder_id": DRIVE_FOLDER_ID,
+                "sheet_url": LEGAL_SHEET_URL,
+                "sheet_state": SHEET.state,
+                "sheet_error": SHEET.error,
+                "gmail_label": "Legal_AI_Processed",
+                "note": "Apps Script runs in Google — scans Gmail, OCRs PDFs, writes to Sheet"
+            },
+            "solvulator": {
+                "sheet_readable": SHEET.state == "ready",
+                "documents": len(DOCUMENTS),
+                "pipeline_agents": 12,
+                "llm_providers": {
+                    "anthropic": bool(ANTHROPIC_API_KEY),
+                    "gemini": bool(GEMINI_API_KEY),
+                    "openrouter": bool(OPENROUTER_KEY),
+                },
+            },
+            "gaps": [
+                g for g in [
+                    "sheet_401" if SHEET.state == "error" and "401" in (SHEET.error or "") else None,
+                    "no_gemini_key" if not GEMINI_API_KEY else None,
+                    "no_anthropic_key" if not ANTHROPIC_API_KEY else None,
+                    "gemini_quota" if GEMINI_API_KEY else None,
+                ] if g
+            ],
+        })
 
 # ══════════════════════════════════════════════════════
 # 8. SMOKE TESTS

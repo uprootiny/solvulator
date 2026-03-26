@@ -45,6 +45,11 @@ a:hover{text-decoration:underline}
   <div id="keys-rows">Loading...</div>
 </div>
 
+<div class="card" id="integration-card">
+  <div class="card-title">Apps Script Integration</div>
+  <div id="integration-rows">Loading...</div>
+</div>
+
 <div class="card" id="sheet-card">
   <div class="card-title">Google Sheet</div>
   <div id="sheet-rows">Loading...</div>
@@ -96,6 +101,23 @@ function row(k, v, cls='') {
 }
 
 async function runChecks() {
+  // Integration
+  const ig = await jfetch('/integration/status');
+  if(ig.ok) {
+    const a = ig.data.apps_script || {};
+    const s = ig.data.solvulator || {};
+    const gaps = ig.data.gaps || [];
+    document.getElementById('integration-rows').innerHTML = [
+      row('sheet_id', a.sheet_id || '?', 'dim'),
+      row('drive_folder', a.drive_folder_id || '?', 'dim'),
+      row('gmail_label', a.gmail_label || '?', 'dim'),
+      row('sheet_readable', a.sheet_state === 'ready' ? 'YES' : a.sheet_state, a.sheet_state==='ready'?'ok':'fail'),
+      row('documents', s.documents || 0, s.documents > 0 ? 'ok' : 'dim'),
+      row('pipeline', s.pipeline_agents + ' agents'),
+      gaps.length ? row('gaps', gaps.join(', '), 'warn') : row('gaps', 'none', 'ok'),
+    ].join('');
+  }
+
   // Health
   const h = await jfetch('/health');
   const hd = h.data;
