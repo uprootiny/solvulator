@@ -747,6 +747,7 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         routes = {
             "/health": self.h_health, "/manifest": self.h_manifest,
+            "/agents": self.h_agents,
             "/sheet/state": self.h_sheet_state, "/sheet/view": self.h_sheet_view,
             "/sheet/snapshot": self.h_sheet_snapshot,
             "/pipeline/runs": self.h_pipeline_list,
@@ -783,7 +784,7 @@ class Handler(BaseHTTPRequestHandler):
                         f"curl http://localhost:{PORT}/health",
                     ],
                 })
-        elif path in ("/manifest.json", "/sw.js", "/check.html", "/pilot.html"):
+        elif path in ("/manifest.json", "/sw.js", "/check.html", "/pilot.html", "/shared.css", "/shared.js"):
             self.serve_static(path.lstrip("/"))
         elif path.startswith("/static/"):
             self.serve_static(path[8:])
@@ -839,6 +840,7 @@ class Handler(BaseHTTPRequestHandler):
             "endpoints": [
                 {"method": "GET", "path": "/health"},
                 {"method": "GET", "path": "/manifest"},
+                {"method": "GET", "path": "/agents"},
                 {"method": "GET", "path": "/sheet/state"},
                 {"method": "GET", "path": "/sheet/view", "params": "density status urgency"},
                 {"method": "GET", "path": "/sheet/snapshot"},
@@ -859,6 +861,11 @@ class Handler(BaseHTTPRequestHandler):
                 "No partial state",
             ],
         })
+
+    def h_agents(self):
+        agents = [{"id": a["id"], "name": a["name"], "name_he": a["name_he"],
+                   "requires_human": a["requires_human"]} for a in PIPELINE_AGENTS]
+        self.send_json({"agents": agents, "count": len(agents)})
 
     def h_sheet_state(self):
         self.send_json(SHEET.state_summary())

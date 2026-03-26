@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Solvulator Pilot – Live Pipeline</title>
+<link rel="stylesheet" href="/shared.css"/>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
   body{font-family:system-ui,-apple-system,"SF Pro"}
@@ -111,9 +112,11 @@
 
 <div id="toast" class="toast"></div>
 
+<script src="/shared.js"></script>
 <script>
 const API = '';
-const AGENTS = [
+// Fallback agent list; overwritten by /agents fetch on load
+let AGENTS = [
   {id:'01_intake',       t:'קליטה וסיווג',             gate:true},
   {id:'02_ocr',          t:'OCR ושלמות טקסט',           gate:true},
   {id:'03_operative',    t:'חילוץ אופרטיבי',            gate:true},
@@ -156,13 +159,6 @@ AGENTS.forEach((a, i) => {
     pipeline.appendChild(arr);
   }
 });
-
-function toast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2000);
-}
 
 function setCardState(i, state, pct = 0) {
   const card = pipeline.children[i * 2];
@@ -340,17 +336,6 @@ function docIcon(type, name) {
   return '📎';
 }
 
-function formatSize(b) {
-  if (b > 1048576) return (b/1048576).toFixed(1) + 'MB';
-  if (b > 1024) return (b/1024).toFixed(0) + 'KB';
-  return b + 'B';
-}
-
-function formatDate(iso) {
-  if (!iso) return '';
-  return iso.replace('T',' ').replace(/:\d{2}Z$/,'');
-}
-
 function renderDocLibrary() {
   const lib = document.getElementById('doc-library');
   const sel = document.getElementById('doc-select');
@@ -455,8 +440,6 @@ async function selectDoc(docId) {
   }
 }
 
-function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
 function closeViewer() {
   document.getElementById('doc-viewer').classList.add('hidden');
   viewedDoc = null;
@@ -536,7 +519,19 @@ async function checkHealth() {
   }
 }
 
+// ── Load agents from backend (fallback to hardcoded) ──
+async function loadAgents() {
+  try {
+    const r = await fetch(API + '/agents');
+    const d = await r.json();
+    if (d.agents && d.agents.length) {
+      AGENTS = d.agents.map(a => ({id: a.id, t: a.name_he, gate: a.requires_human}));
+    }
+  } catch(e) { console.log('agents endpoint unavailable, using fallback'); }
+}
+
 // ── Init ──
+loadAgents();
 checkHealth();
 loadDocs();
 

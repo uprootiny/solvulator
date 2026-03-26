@@ -4,13 +4,9 @@
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Solvulator · System Check</title>
+<link rel="stylesheet" href="/shared.css"/>
 <style>
-:root{--bg:#07070a;--s1:#0c0c12;--s2:#12121c;--border:#22222e;
-  --gold:#c9a84c;--red:#e05252;--green:#3db87a;--blue:#4a8fe8;
-  --text:#d4cfc7;--dim:#6a6460;--mono:'SF Mono','Menlo','Courier New',monospace;
-  --sans:system-ui,sans-serif}
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--bg);color:var(--text);font-family:var(--sans);padding:20px;max-width:640px;margin:0 auto}
+body{padding:20px;max-width:640px;margin:0 auto}
 h1{font-size:16px;color:var(--gold);font-family:var(--mono);margin-bottom:16px;letter-spacing:2px}
 .card{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px}
 .card-title{font-size:11px;color:var(--dim);font-family:var(--mono);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
@@ -18,21 +14,19 @@ h1{font-size:16px;color:var(--gold);font-family:var(--mono);margin-bottom:16px;l
 .row .k{color:var(--dim);font-family:var(--mono);font-size:11px}
 .row .v{font-family:var(--mono);font-size:12px}
 .ok{color:var(--green)}.fail{color:var(--red)}.warn{color:var(--gold)}.dim{color:var(--dim)}
-button{font-family:var(--mono);font-size:12px;padding:8px 16px;background:var(--s2);
-  border:1px solid var(--border);border-radius:6px;color:var(--gold);cursor:pointer;min-height:40px}
+button{font-size:12px;padding:8px 16px;background:var(--s2);
+  border:1px solid var(--border);border-radius:6px;color:var(--gold);min-height:40px}
 button:active{background:var(--gold);color:var(--bg)}
 .test-result{margin-top:8px;padding:10px;background:var(--bg);border-radius:6px;
   font-family:var(--mono);font-size:11px;white-space:pre-wrap;max-height:300px;overflow-y:auto;
   color:var(--text);line-height:1.5;display:none}
 .latency{font-size:10px;color:var(--dim)}
-a{color:var(--gold);text-decoration:none}
-a:hover{text-decoration:underline}
 </style>
 </head>
 <body>
 <h1>SYSTEM CHECK</h1>
 <div style="margin-bottom:16px;font-size:12px;color:var(--dim)">
-  <a href="/">← Storyboard</a> · <a href="/index.html">v0.4 UI</a> · <a href="/manifest">Manifest</a>
+  <a href="/">← Storyboard</a> · <a href="/pilot.html">Pipeline</a> · <a href="/manifest">Manifest</a>
 </div>
 
 <div class="card" id="health-card">
@@ -81,20 +75,9 @@ a:hover{text-decoration:underline}
   <div id="endpoint-rows">Loading...</div>
 </div>
 
+<script src="/shared.js"></script>
 <script>
-const API = '';
-
-async function jfetch(url, opts) {
-  const t0 = performance.now();
-  try {
-    const r = await fetch(API + url, opts);
-    const ms = Math.round(performance.now() - t0);
-    const data = await r.json();
-    return {ok: r.ok, status: r.status, data, ms};
-  } catch(e) {
-    return {ok: false, status: 0, data: {error: e.message}, ms: Math.round(performance.now() - t0)};
-  }
-}
+const jfetch = apiFetch;
 
 function row(k, v, cls='') {
   return `<div class="row"><span class="k">${k}</span><span class="v ${cls}">${v}</span></div>`;

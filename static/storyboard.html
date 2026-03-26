@@ -11,28 +11,11 @@
 <link rel="manifest" href="/manifest.json"/>
 <link rel="apple-touch-icon" href="/icon-192.png"/>
 <title>סולבולטור · Storyboard</title>
+<link rel="stylesheet" href="/shared.css"/>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
-:root {
-  --bg:#07070a; --s1:#0c0c12; --s2:#12121c; --s3:#1a1a28;
-  --border:#22222e; --border-hi:#3a3a4e;
-  --gold:#c9a84c; --red:#e05252; --green:#3db87a; --blue:#4a8fe8;
-  --orange:#e0803a; --purple:#9b6ee0; --teal:#3db8a0;
-  --text:#d4cfc7; --mid:#9a9490; --dim:#6a6460; --faint:#3a3632;
-  --mono:'SF Mono','Menlo','Courier New',monospace;
-  --sans:system-ui,-apple-system,'Segoe UI',sans-serif;
-  --safe-t:env(safe-area-inset-top,0px);
-  --safe-b:env(safe-area-inset-bottom,0px);
-  --safe-l:env(safe-area-inset-left,0px);
-  --safe-r:env(safe-area-inset-right,0px);
-}
-*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body{background:var(--bg);color:var(--text);font-family:var(--sans);
-  min-height:100vh;min-height:100dvh;font-size:14px;overflow:hidden;
-  -webkit-font-smoothing:antialiased;touch-action:none}
-::-webkit-scrollbar{width:2px}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
-button{cursor:pointer;font-family:var(--mono);background:none;border:none;color:inherit;
-  -webkit-touch-callout:none;min-height:44px}
+/* page-specific overrides */
+html,body{min-height:100vh;min-height:100dvh;font-size:14px;overflow:hidden;touch-action:none}
 
 /* ═══ ZOOM LEVEL INDICATOR ═══ */
 #zoom-bar{position:fixed;top:var(--safe-t);left:var(--safe-l);right:var(--safe-r);
@@ -347,14 +330,6 @@ button{cursor:pointer;font-family:var(--mono);background:none;border:none;color:
 .intake-option.drive{border-color:rgba(74,143,232,0.3)}
 .intake-option.drive .io-icon{color:var(--blue)}
 
-/* ═══ ANIMATIONS ═══ */
-@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-.fade-in{animation:fadeIn .25s ease}
-@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none}}
-.slide-up{animation:slideUp .3s ease}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
-.pulse{animation:pulse 1.5s ease infinite}
-
 /* ═══ RESPONSIVE ═══ */
 @media(min-width:768px){
   #canvas{max-width:640px;margin:0 auto}
@@ -505,6 +480,7 @@ button{cursor:pointer;font-family:var(--mono);background:none;border:none;color:
   </button>
 </nav>
 
+<script src="/shared.js"></script>
 <script>
 // ═══════════════════════════════════════════════
 // STATE
@@ -1355,12 +1331,7 @@ function docTypeIcon(mime, name) {
   return { icon: '\u{1F4C4}', cls: 'text' };
 }
 
-function formatFileSize(bytes) {
-  if (!bytes) return '';
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / 1048576).toFixed(1) + ' MB';
-}
+const formatFileSize = formatSize; // alias to shared.js
 
 // ─── INTAKE PANEL ───
 function toggleIntake() {
@@ -1724,10 +1695,7 @@ function renderDocViewer(doc) {
   </div>`;
 }
 
-function escHtml(s) {
-  if (!s) return '';
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
+// escHtml provided by shared.js
 
 // ─── DOCUMENT LIST HTML ───
 function renderDocList(docs) {
@@ -1793,12 +1761,13 @@ async function analyzeDoc(docId) {
   }
 }
 
-// ─── TOAST HELPER ───
+// ─── TOAST HELPER (delegates to shared.js toast via share-toast element) ───
 function showToast(msg) {
-  const toast = document.getElementById('share-toast');
-  toast.textContent = msg;
-  toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), 2500);
+  const el = document.getElementById('share-toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2500);
 }
 
 // ═══════════════════════════════════════════════
