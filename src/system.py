@@ -20,7 +20,7 @@ Mounts:
   /drive/import                   import from Drive (POST)
   /integration/status             Apps Script integration status (GET)
   /                               serves storyboard.html (GET)
-  /index.html                     serves solvulator UI (GET)
+  /pilot.html                     pipeline runner UI (GET)
   /static/*                       static file passthrough
 
 Usage:
@@ -783,8 +783,6 @@ class Handler(BaseHTTPRequestHandler):
                         f"curl http://localhost:{PORT}/health",
                     ],
                 })
-        elif path == "/index.html":
-            self.serve_static("index.html")
         elif path in ("/manifest.json", "/sw.js", "/check.html", "/pilot.html"):
             self.serve_static(path.lstrip("/"))
         elif path.startswith("/static/"):
