@@ -536,69 +536,161 @@ let state = {
 // SAMPLE DATA (replaced by API when available)
 // ═══════════════════════════════════════════════
 
+const LEGAL_DOCTRINES = [
+  {id:'s19k',name:'§19כ — התאמה סבירה לאנשים עם מוגבלות',category:'constitutional',
+   tests:['Certified disability','Public body','Accommodation denied'],
+   authorities:['Equal Rights for PWD Act','HCJ 104/87 Naamat']},
+  {id:'proportionality',name:'מידתיות — מבחן בית סוריק',category:'administrative',
+   tests:['קשר רציונלי','פגיעה פחותה','איזון'],
+   authorities:['HCJ 2056/04 Beit Sourik','HCJ 769/02 Targeted Killings']},
+  {id:'procedural-fairness',name:'הוגנות פרוצדורלית — זכות הטיעון',category:'administrative',
+   tests:['זכות הטיעון','המצאה אפקטיבית','חובת ההנמקה'],
+   authorities:['HCJ 910/86 Rashid','HCJ 1027/04 Hakmoun']},
+  {id:'ultra-vires',name:'חריגה מסמכות',category:'administrative',
+   tests:['סמכות סטטוטורית','סמכויות משתמעות','מטרת הסמכה'],
+   authorities:['HCJ 1/49 Carmel']},
+  {id:'effective-service',name:'המצאה אפקטיבית — ביטול מחמת פגם',category:'procedural',
+   tests:['המצאה אפקטיבית מול פורמלית','התאמת נגישות','מניין מידיעה בפועל'],
+   authorities:['SDR 2018','§19k Disability Act','Regulation 137(a)']},
+  {id:'reasonableness',name:'סבירות — דפי זהב',category:'administrative',
+   tests:['שיקולים רלוונטיים','חוסר סבירות קיצוני'],
+   authorities:['Dapei Zahav','HCJ 680/88 Schnitzer']},
+];
+
 const SAMPLE_CASES = [
+  // ─── CASE 1: ARNONA APPEAL (CRITICAL) ────────────
   {
-    sv_id:'SV-HCJ78240', case_number:'HCJ 78240/24',
-    source:'בג"ץ', doc_type:'החלטה', urgency:'high', status:'DONE', stage:4,
-    amount:1500,
-    parties:{petitioner:'אברהם',respondent:'עיריית חיפה',judge:'כב\' השופטת ברק-ארז'},
-    summary_he:'עתירה נגד חיוב ארנונה בלתי מידתי — החלטת ביניים מחייבת הגשת מסמכים כלכליים',
-    summary_en:'Petition against disproportionate municipal tax — interim order requires economic docs',
-    stakes:['property','fee','constitutional'],
-    deadlines:[{action:'הגשת מסמכים כלכליים',date:'2026-04-01',days_remaining:6,consequence:'מחיקת הבקשה'}],
+    sv_id:'58022-09-25', case_number:'ע"ר 58022-09-25',
+    source:'מחוזי ירושלים', doc_type:'ערעור', urgency:'urgent', status:'BLOCKED', stage:3,
+    amount:0,
+    parties:{petitioner:'פרופ\' אברהם ארליך',respondent:'עיריית ירושלים',judge:'כב\' השופט ערן שילה'},
+    summary_he:'חוב ארנונה + עיקול — בקשת ביטול הוגשה 20.02.2026. ממתין לתגובת עירייה.',
+    summary_en:'Arnona debt + foreclosure — vacate motion filed. Awaiting municipality response.',
+    stakes:['fee','procedure','constitutional','access'],
+    plaintiff_strategy:'כשל תקשורת בית משפט → היעדר ידיעה אפקטיבית. PTSD + לקות שמיעה מנעו הגשה במועד. הליכים מקבילים = תום לב.',
+    defendant_strategy:'אין תצהיר (תקנה 50). שיהוי ניכר — 50 יום איחור. 111 תיקים קודמים = בעל דין מתוחכם.',
+    deadlines:[
+      {action:'תגובת עירייה לבקשת ביטול',date:'2026-03-15',days_remaining:-11,consequence:'הבקשה תידון לגופה'},
+      {action:'תצהיר מאומת נדרש',date:'2026-04-15',days_remaining:20,consequence:'דחיית הבקשה על הסף'},
+    ],
     events:[
-      {date:'2024-06-15',type:'adverse',title:'חיוב ארנונה מופרז',sub:'עיריית חיפה מוציאה שומה חדשה — פי 3 מהשנה הקודמת'},
-      {date:'2024-09-01',type:'our-action',title:'השגה מנהלית',sub:'הגשת השגה למנהל הארנונה עם חוות דעת שמאי'},
-      {date:'2024-12-10',type:'adverse',title:'דחיית ההשגה',sub:'מנהל הארנונה דוחה ללא הנמקה מפורטת'},
-      {date:'2025-01-15',type:'our-action',title:'ערר לוועדת ערר',sub:'ערר על דחיית ההשגה + בקשת פטור'},
-      {date:'2025-06-20',type:'adverse',title:'דחיית הערר',sub:'ועדת הערר דוחה — "אין מקום להתערב בשיקול דעת"'},
-      {date:'2025-08-01',type:'our-action',title:'עתירה לבג"ץ',sub:'עתירה על אי-מידתיות + אכיפה בררנית'},
-      {date:'2025-11-15',type:'procedural',title:'דיון ראשון',sub:'בית המשפט מבקש תגובת המשיבה'},
-      {date:'2026-01-20',type:'adverse',title:'תגובת העירייה',sub:'טוענת סמכות + שיהוי + העדר עילה'},
-      {date:'2026-02-28',type:'critical',title:'החלטת ביניים',sub:'חובת הגשת מסמכים כלכליים תוך 30 יום',
+      {date:'2024-01-01',type:'procedural',title:'חוב ארנונה נצבר',sub:'חוב ארנונה לעיריית ירושלים'},
+      {date:'2024-03-01',type:'procedural',title:'תיק הוצאה לפועל נפתח',sub:'לשכת ההוצאה לפועל פותחת תיק'},
+      {date:'2024-05-01',type:'adverse',title:'חשבון בנק עוקל',sub:'עיקול חשבון בנק על חוב ארנונה'},
+      {date:'2024-07-01',type:'adverse',title:'תביעה בסכום קצוב',sub:'עיריית ירושלים מגישה תביעה'},
+      {date:'2024-11-21',type:'adverse',title:'התנגדות נדחתה',sub:'בית המשפט דוחה את ההתנגדות'},
+      {date:'2025-02-01',type:'our-action',title:'עתירה מנהלית הוגשה',sub:'עתירה נגד הליכי הגביה'},
+      {date:'2025-02-15',type:'adverse',title:'עתירה מנהלית נדחתה',sub:'בית המשפט דוחה — "אין עילה מנהלית"'},
+      {date:'2025-03-01',type:'our-action',title:'עתירה לבג"ץ',sub:'פנייה לבית המשפט העליון'},
+      {date:'2025-03-20',type:'adverse',title:'בג"ץ נדחה',sub:'פטור אגרה סורב — עתירה נדחתה'},
+      {date:'2025-05-09',type:'adverse',title:'ביטול נדחה בערכאה דלמטה',sub:'בית משפט השלום דוחה בקשת ביטול'},
+      {date:'2025-07-13',type:'critical',title:'⚠ מועד סטטוטורי חלף',sub:'45 יום לערעור — חלף. נדרשים טעמים מיוחדים.',
        implications:[
-         {type:'opens',text:'מאפשרת הוכחת מצב כלכלי — פותחת ראש נזק חדש'},
-         {type:'closes',text:'סוגרת טענת שיהוי — בית המשפט קיבל את התיק'},
-         {type:'shifts',text:'מעבירה נטל ההוכחה לעותר — צריך ראיות כלכליות'},
-         {type:'narrows',text:'מצמצמת את הדיון לשאלת המידתיות בלבד'}
+         {type:'closes',text:'סוגרת את חלון הערעור הרגיל — כעת רק "טעמים מיוחדים"'},
+         {type:'shifts',text:'נטל ההוכחה עובר למערער — חייב להראות נסיבות חריגות'},
+         {type:'opens',text:'פותחת טענת נכות + המצאה כ"טעמים מיוחדים"'}
        ],
        framing:[
-         {label:'FRAME: PROPORTIONALITY',text:'בית המשפט מסגר את השאלה כשאלת מידתיות — לא חוקיות'},
-         {label:'FRAME: BURDEN',text:'נטל ההוכחה על העותר להראות חוסר מידתיות, לא על הרשות'},
-         {label:'FRAME: DEFERENCE',text:'שיקול דעת מנהלי מוגן — התערבות רק במקרי קיצון'}
+         {label:'FRAME: LACHES',text:'בית המשפט מסגר כשיהוי — האם העותר "ישב בחיבוק ידיים"'},
+         {label:'FRAME: SOPHISTICATION',text:'111 תיקים קודמים = בעל דין מתוחכם — לא הדיוט'},
+         {label:'FRAME: DISABILITY',text:'PTSD + לקות שמיעה — האם מהווים "טעמים מיוחדים"'}
        ]},
-      {date:'2026-03-20',type:'gate',title:'Agent 04 — מיפוי מבני',sub:'ניתוח מבנה משפטי הושלם. DONE.'},
-      {date:'2026-04-01',type:'critical',title:'מועד הגשה אחרון',sub:'תצהיר כלכלי + מסמכים תומכים'}
+      {date:'2025-09-01',type:'our-action',title:'בקשת הארכה מאוחרת',sub:'הוגשה באיחור של 50 יום'},
+      {date:'2025-09-05',type:'our-action',title:'ערעור הוגש',sub:'ע"ר 58022-09-25 הוגש למחוזי ירושלים'},
+      {date:'2025-12-15',type:'adverse',title:'כתב התנגדות העירייה',sub:'4 טענות: התיישנות, אין טעמים מיוחדים, סיכויים אפסיים, צפייה בהחלטה'},
+      {date:'2026-01-15',type:'procedural',title:'דיון נקבע',sub:'דיון בפני כב\' השופט שילה'},
+      {date:'2026-02-18',type:'critical',title:'⚠ הערעור נמחק',sub:'כב\' השופט שילה מוחק את הערעור. חיוב בהוצאות.',
+       implications:[
+         {type:'closes',text:'סוגרת את הערעור — אין ערכאה נוספת אלא בקשת ביטול'},
+         {type:'opens',text:'פותחת מסלול בקשת ביטול — על בסיס פגם בהמצאה'},
+         {type:'shifts',text:'הכל תלוי בשאלת ההמצאה האפקטיבית'}
+       ]},
+      {date:'2026-02-20',type:'our-action',title:'בקשת ביטול הוגשה',sub:'על בסיס היעדר המצאה אפקטיבית. ממתין לתגובת עירייה.'},
     ],
     dependencies:[
-      {direction:'blocks',target:'SV-TA1204',label:'פסק דין כאן ישפיע על הערעור שם'},
-      {direction:'needs',target:'FOI-001',label:'תשובת חופש מידע על נוהל ארנונה פנימי'}
-    ]
+      {direction:'blocks',target:'1204-12-25',label:'תוצאה כאן משפיעה על תיק חדרה'},
+      {direction:'needs',target:'evidence',label:'תצהיר מאומת + תיעוד רפואי עדכני + ראיות כשל המצאה'},
+    ],
+    evidence_needed:[
+      {item:'תצהיר מאומת כדין',status:'needed',critical:true},
+      {item:'תיעוד רפואי עדכני — PTSD + שמיעה',status:'needed',critical:true},
+      {item:'ראיות כשל המצאה — כותרות מייל, פקס',status:'needed',critical:true},
+      {item:'תיעוד שירות מילואים',status:'needed',critical:false},
+    ],
+    doctrines:['effective-service','procedural-fairness','s19k','reasonableness'],
   },
+  // ─── CASE 2: PARKING / ACCESSIBILITY ─────────────
   {
-    sv_id:'SV-TA1204', case_number:'TA 1204/26',
-    source:'שלום חדרה', doc_type:'החלטה', urgency:'high', status:'BLOCKED', stage:2,
+    sv_id:'70384-11-25', case_number:'עת"מ 70384-11-25',
+    source:'מחוזי ירושלים — מנהלי', doc_type:'עתירה מנהלית', urgency:'high', status:'RUNNING', stage:2,
     amount:0,
-    parties:{petitioner:'אברהם',respondent:'לשכת ההוצאה לפועל',judge:'כב\' השופט לוי'},
-    summary_he:'בקשה לעיכוב הליכים עד למתן פסק דין בבג"ץ — חסום בגלל הליך מקביל',
-    summary_en:'Stay request pending HCJ ruling — blocked by parallel proceedings',
-    stakes:['access','procedure','fee'],
-    deadlines:[{action:'הגשת העתק החלטת בג"ץ',date:'2026-03-07',days_remaining:-19,consequence:'דחיית הבקשה'}],
+    parties:{petitioner:'פרופ\' אברהם ארליך',respondent:'עיריית ירושלים — מח\' תחבורה',judge:'כב\' השופטת ענת זינגר'},
+    summary_he:'חניה כחול-לבן / חרלייפ 58 — עתירה מנהלית. חסימת גראז\' רשום בטאבו.',
+    summary_en:'Blue-White parking / Harlap 58 garage — admin petition. Registered garage access blocked.',
+    stakes:['property','access','constitutional','procedure'],
+    deadlines:[{action:'תגובה מקדמית',date:'2026-01-26',days_remaining:-59,consequence:'העתירה תידון ללא תגובה'}],
     events:[
-      {date:'2026-01-10',type:'adverse',title:'פתיחת תיק הוצל"פ',sub:'לשכת ההוצאה לפועל פותחת תיק על חוב ארנונה'},
-      {date:'2026-02-01',type:'our-action',title:'בקשת עיכוב',sub:'בקשה לעיכוב הליכים בשל עתירה תלויה בבג"ץ'},
-      {date:'2026-02-25',type:'adverse',title:'דרישה להעתק',sub:'בית המשפט דורש העתק החלטת בג"ץ תוך 10 ימים'},
-      {date:'2026-03-07',type:'critical',title:'מועד שחלף',sub:'לא הוגש העתק — הבקשה בסכנת דחייה'}
+      {date:'2025-11-01',type:'our-action',title:'עתירה מנהלית הוגשה',sub:'עת"מ 70384-11-25 — חסימת גישה לגראז\' רשום בטאבו'},
+      {date:'2025-12-15',type:'procedural',title:'בקשת תגובה',sub:'כב\' השופטת זינגר מבקשת תגובת המשיבה'},
+      {date:'2026-01-26',type:'critical',title:'מועד תגובה',sub:'תגובה מקדמית — האם הוגשה?'},
     ],
     dependencies:[
-      {direction:'blocked-by',target:'SV-HCJ78240',label:'ממתין לפסק דין בג"ץ'}
-    ]
+      {direction:'supports',target:'58022-09-25',label:'טענת אכיפה בררנית משותפת'},
+    ],
+    doctrines:['ultra-vires','proportionality','s19k'],
   },
+  // ─── CASE 3: HADERA CIVIL / FEE EXEMPTION ──────────
   {
-    sv_id:'SV-003', case_number:'FOI-001',
+    sv_id:'1204-12-25', case_number:'ת"א 1204-12-25',
+    source:'שלום חדרה', doc_type:'תביעה אזרחית', urgency:'urgent', status:'BLOCKED', stage:2,
+    amount:1500,
+    parties:{petitioner:'ארליך',respondent:'אדווה, אסולין',judge:''},
+    summary_he:'תביעה אזרחית חדרה — סכסוך חקלאי — פטור אגרה חלף. מועד 10 ימים עבר.',
+    summary_en:'Hadera civil suit — agricultural dispute — fee exemption ELAPSED.',
+    stakes:['fee','access','procedure'],
+    deadlines:[
+      {action:'פטור מאגרה — 10 ימים מ-25.02',date:'2026-03-07',days_remaining:-19,consequence:'₪1,500 או הארכת מועד רטרואקטיבית'},
+    ],
+    events:[
+      {date:'2025-12-01',type:'our-action',title:'תביעה הוגשה',sub:'תביעה אזרחית בבית משפט השלום בחדרה'},
+      {date:'2026-02-25',type:'adverse',title:'דרישת פטור אגרה',sub:'בית המשפט דורש העתק החלטת פטור תוך 10 ימים'},
+      {date:'2026-03-07',type:'critical',title:'⚠ מועד חלף',sub:'לא הוגש — נדרשת הארכת מועד או תשלום ₪1,500',
+       implications:[
+         {type:'closes',text:'חלון הפטור נסגר — צריך הארכה רטרואקטיבית'},
+         {type:'shifts',text:'צריך להגיש בקשת הארכה + הסבר לאיחור'},
+       ]},
+    ],
+    dependencies:[
+      {direction:'blocked-by',target:'58022-09-25',label:'ממתין לתוצאת ערעור ארנונה'},
+    ],
+    doctrines:['procedural-fairness'],
+  },
+  // ─── CASE 4: FEvcm ACCESSIBILITY PETITION ────────
+  {
+    sv_id:'19546-05-25', case_number:'עת"מ 19546-05-25',
+    source:'מחוזי ירושלים — מנהלי', doc_type:'עתירה מנהלית', urgency:'medium', status:'RUNNING', stage:4,
+    amount:50000,
+    parties:{petitioner:'אלכסנדר דוד פכט',respondent:'האקדמיה הישראלית למדעים — FEvcm',judge:''},
+    summary_he:'עתירה נגד האקדמיה למדעים — אתר אינו עומד בתקן נגישות WCAG 2.1 AA.',
+    summary_en:'Admin petition — Academy website fails WCAG 2.1 AA accessibility standard.',
+    stakes:['access','constitutional'],
+    deadlines:[{action:'סיכומים',date:'2025-06-15',days_remaining:-284,consequence:'דיון ללא סיכומים'}],
+    events:[
+      {date:'2025-05-15',type:'our-action',title:'עתירה הוגשה',sub:'עתירה נגד האקדמיה + משרד החינוך — הנגשת אתר + פרסומים'},
+      {date:'2025-06-01',type:'procedural',title:'דיון ראשון',sub:'בית המשפט מבקש תגובה'},
+      {date:'2025-06-15',type:'critical',title:'מועד סיכומים',sub:'עותר צריך חומרים אקדמיים להליך 58022'},
+    ],
+    dependencies:[
+      {direction:'supports',target:'58022-09-25',label:'חומרים אקדמיים נדרשים להליך הארנונה'},
+    ],
+    doctrines:['s19k','proportionality','reasonableness'],
+  },
+  // ─── CASE 5: FOI REQUEST ────────────────────────
+  {
+    sv_id:'FOI-001', case_number:'חופש מידע — ארנונה',
     source:'חופש מידע', doc_type:'בקשה', urgency:'medium', status:'PENDING', stage:1,
     amount:0,
-    parties:{petitioner:'אברהם',respondent:'עיריית חיפה — מחלקת ארנונה',judge:''},
+    parties:{petitioner:'פרופ\' אברהם ארליך',respondent:'עיריית ירושלים — מחלקת ארנונה',judge:''},
     summary_he:'בקשת חופש מידע על נוהל פנימי לחישוב ארנונה ופטורים',
     summary_en:'FOI request for internal municipal tax calculation procedures',
     stakes:['access','constitutional'],
