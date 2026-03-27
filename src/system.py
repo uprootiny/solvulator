@@ -59,7 +59,7 @@ SERVICE_ID       = "solvulator-system"
 OPENROUTER_KEY   = ""
 GEMINI_API_KEY   = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL     = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
-LEGAL_SHEET_ID   = os.environ.get("LEGAL_SHEET_ID", "1cK4F7_5gGB_inEhZieiZdrdVbZOZWqE2phpHEO2WStM")
+LEGAL_SHEET_ID   = os.environ.get("LEGAL_SHEET_ID", "1_k7zSJvUJGJESkfJN02Jx-nxm5NcnBTimlZGCVwRk0k")
 LEGAL_SHEET_URL  = os.environ.get("LEGAL_SHEET_URL", f"https://docs.google.com/spreadsheets/d/{LEGAL_SHEET_ID}/export?format=csv")
 DRIVE_FOLDER_ID  = os.environ.get("DRIVE_FOLDER_ID", "1FG27TPmB0LcVl-c7hBcZiFC3aqVk2u8b")
 _or_env = Path.home() / ".env.openrouter"
@@ -117,11 +117,29 @@ _scan_uploads()
 REQUIRED_COLUMNS = {"SV_ID", "Stage", "Status", "Source", "Document_Type", "Urgency"}
 # Apps Script writes richer schema — map it to our columns
 COLUMN_ALIASES   = {
+    # Apps Script schema
     "case_number": "SV_ID", "Case_Number": "SV_ID", "sv_id": "SV_ID",
     "case_type": "Document_Type", "Case_Type": "Document_Type",
     "status": "Status",
-    "defendant": "Source",  # respondent is the source authority
+    "defendant": "Source",
     "Urgency": "Urgency", "urgency": "Urgency",
+    # Live Google Sheet schema (case tracker sheet)
+    "case tracker": "SV_ID",
+    "Court": "Source",
+    "Type": "Document_Type",
+    "Status": "Status",
+    "plaintiff ": "plaintiff",  # note trailing space in sheet
+    "defendant ": "defendant",
+    "court decision ": "court_decision",
+    "Last Action Dt": "last_action",
+    "Next Deadline": "next_deadline",
+    "Link": "drive_link",
+    "Text ": "full_text",
+    "summary ": "summary",
+    "human approval": "human_approval",
+    "Notes / Strategy": "strategy",
+    "Assigned Advocates": "advocates",
+    "Tags": "tags",
 }
 VALID_STATUSES   = {"PENDING", "RUNNING", "DONE", "BLOCKED", "N/A"}
 VALID_URGENCIES  = {"high", "medium", "low", ""}
@@ -179,9 +197,11 @@ class SheetEngine:
             for req in list(missing):
                 if req.lower() in lower_present:
                     missing.discard(req)
-            # If still missing, synthesize defaults (Apps Script schema)
-            if missing and "case_number" in {c.lower() for c in raw_cols}:
-                # Apps Script schema detected — inject missing columns
+            # If still missing, check for alternative schemas
+            raw_lower = {c.lower().strip() for c in raw_cols}
+            if missing and ("case_number" in raw_lower or "case tracker" in raw_lower
+                           or "court" in raw_lower):
+                # Alternative schema detected (Apps Script or live sheet)
                 self._apps_script_mode = True
                 missing = set()  # accept as-is
             elif missing:
@@ -203,49 +223,90 @@ class SheetEngine:
         return fields
 
     def _normalize(self, raw):
-        # Handle both native schema and Apps Script schema
-        sv_id = raw.get("SV_ID", raw.get("case_number", "")).strip()
+        """Handle all three schemas: native (7-col), Apps Script (14-col), live sheet (21-col)."""
+        # Core ID — try multiple column names
+        sv_id = (raw.get("SV_ID") or raw.get("case_number") or raw.get("case tracker") or "").strip()
+        # Source/court
+        source = (raw.get("Source") or raw.get("Court") or raw.get("defendant") or "").strip()
+        # Document type
+        doc_type = (raw.get("Document_Type") or raw.get("Type") or raw.get("case_type") or "").strip()
+        # Status — normalize to uppercase
+        status_raw = (raw.get("Status") or raw.get("status") or "").strip()
+        # For live sheet, Status contains full Hebrew text — map to our statuses
+        status_upper = status_raw.upper() if status_raw else ""
+        if status_upper in VALID_STATUSES:
+            status = status_upper
+        elif any(w in status_raw for w in ["נמחק", "נדחה", "סולק"]):
+            status = "BLOCKED"
+        elif any(w in status_raw for w in ["הושלם", "אושר"]):
+            status = "DONE"
+        elif any(w in status_raw for w in ["ממתין", "pending", "תלוי"]):
+            status = "PENDING"
+        elif status_raw:
+            status = "RUNNING"  # has status text = active
+        else:
+            status = "PENDING"
+        # Urgency
+        urgency = (raw.get("Urgency") or raw.get("urgency") or "").strip().lower()
+        if urgency not in VALID_URGENCIES:
+            urgency = "medium"
+        # Stage
         stage_raw = raw.get("Stage", "")
-        amount_raw = raw.get("Amount", raw.get("exhibits_count", ""))
-        status_raw = raw.get("Status", raw.get("status", "")).strip().upper()
-        source = raw.get("Source", raw.get("defendant", "")).strip()
-        doc_type = raw.get("Document_Type", raw.get("case_type", "")).strip()
-        urgency = raw.get("Urgency", raw.get("urgency", "")).strip().lower()
-        stage = None
-        amount = None
         try:
             stage = int(stage_raw.strip()) if stage_raw.strip() else 0
         except ValueError:
             stage = 0
+        # Amount
+        amount_raw = raw.get("Amount") or raw.get("exhibits_count") or ""
         try:
-            amount = int(amount_raw.strip()) if amount_raw.strip() else None
+            amount = int(str(amount_raw).strip()) if str(amount_raw).strip() else None
         except ValueError:
-            pass
-        if status_raw not in VALID_STATUSES:
-            status_raw = "PENDING"
-        # Preserve all extra fields from Apps Script
+            amount = None
+        # Live sheet fields
+        drive_link = (raw.get("drive_link") or raw.get("Link") or "").strip()
+        full_text = (raw.get("full_text") or raw.get("Text ") or raw.get("Text") or "").strip()
+        summary = (raw.get("summary") or raw.get("summary ") or "").strip()
+        strategy = (raw.get("strategy") or raw.get("Notes / Strategy") or "").strip()
+        court_decision = (raw.get("court_decision") or raw.get("court decision ") or raw.get("decision") or "").strip()
+        next_deadline = (raw.get("next_deadline") or raw.get("Next Deadline") or "").strip()
+        last_action = (raw.get("last_action") or raw.get("Last Action Dt") or "").strip()
+        plaintiff = (raw.get("plaintiff") or raw.get("plaintiff ") or "").strip()
+        defendant = (raw.get("defendant") or raw.get("defendant ") or "").strip()
+        # Collect attachment texts
+        attachments = []
+        for i in range(1, 6):
+            att = (raw.get(f"attachment {i} text") or raw.get(f"attachment_{i}_text") or "").strip()
+            if att:
+                attachments.append(att)
+        # Preserve extra fields
         extra = {}
+        known = {"SV_ID","Stage","Status","Source","Document_Type","Urgency","Amount",
+                 "case tracker","Court","Type","plaintiff","plaintiff ","defendant","defendant ",
+                 "court decision ","Last Action Dt","Next Deadline","Link","Text ","summary ",
+                 "human approval","Notes / Strategy","Assigned Advocates","Tags"}
         for k, v in raw.items():
-            lk = k.lower().replace(" ", "_")
-            if lk not in {"sv_id","stage","status","source","document_type","urgency","amount"}:
-                extra[lk] = v
+            if k not in known and v and str(v).strip():
+                extra[k.lower().replace(" ", "_").strip("_")] = str(v).strip()
         return {
-            "sv_id": sv_id if sv_id else f"AUTO-{hash(str(raw)) % 10000:04d}",
+            "sv_id": sv_id if sv_id else f"AUTO-{abs(hash(str(raw))) % 10000:04d}",
             "stage": stage,
-            "status": status_raw,
+            "status": status,
             "source": source,
             "document_type": doc_type,
-            "urgency": urgency if urgency in VALID_URGENCIES else "medium",
+            "urgency": urgency,
             "amount": amount,
-            "plaintiff": raw.get("plaintiff", ""),
-            "defendant": raw.get("defendant", ""),
-            "case_name": raw.get("case_name", ""),
-            "decision": raw.get("decision", ""),
-            "plaintiff_strategy": raw.get("plaintiff_strategy", ""),
-            "defendant_strategy": raw.get("defendant_strategy", ""),
-            "plaintiff_deadline": raw.get("plaintiff_deadline", ""),
-            "defendant_deadline": raw.get("defendant_deadline", ""),
-            "clean_text": raw.get("Clean_Text_Link", raw.get("Notes", "")).strip(),
+            "plaintiff": plaintiff,
+            "defendant": defendant,
+            "court_decision": court_decision,
+            "summary": summary,
+            "strategy": strategy,
+            "drive_link": drive_link,
+            "full_text": full_text[:500],  # truncate for API responses
+            "next_deadline": next_deadline,
+            "last_action": last_action,
+            "attachments": len(attachments),
+            "tags": (raw.get("Tags") or raw.get("tags") or "").strip(),
+            "clean_text": full_text or summary or court_decision,
             "_extra": extra,
             "_raw": raw,
         }
@@ -260,20 +321,24 @@ class SheetEngine:
 
     def load(self, source):
         try:
+            import csv as csvmod, io
             self.source = source
             raw_csv = self._fetch_csv(source)
-            lines = [l.strip() for l in raw_csv.splitlines() if l.strip()]
-            if not lines:
+            if not raw_csv.strip():
                 raise RuntimeError("Empty CSV")
-            header = self._parse_header(lines[0])
+            # Use Python's csv module to handle quoted multi-line fields
+            reader = csvmod.reader(io.StringIO(raw_csv))
+            raw_header = next(reader)
+            header = self._parse_header(",".join(raw_header))
             col_count = len(header)
             results = []
-            for line in lines[1:]:
-                fields = self._parse_line(line)
-                # Pad or trim to match header (Apps Script rows can have variable-length exhibit/fact columns)
+            for fields in reader:
+                if not any(f.strip() for f in fields):
+                    continue  # skip empty rows
+                # Pad to match header
                 if len(fields) < col_count:
                     fields += [""] * (col_count - len(fields))
-                row = self._normalize(dict(zip(header, fields[:col_count])))
+                row = self._normalize(dict(zip(header, [f.strip() for f in fields[:col_count]])))
                 results.append(self._validate(row))
 
             valid = [r for r in results if r["valid"]]
@@ -304,8 +369,10 @@ class SheetEngine:
             return {"error": "not ready", "state": self.state}
         DENSITY_FIELDS = {
             "summary": {"sv_id", "status"},
-            "focused": {"sv_id", "status", "urgency", "stage", "source"},
-            "neighborhood": {"sv_id", "status", "urgency", "stage", "source", "document_type", "amount", "plaintiff", "defendant", "case_name"},
+            "focused": {"sv_id", "status", "urgency", "source", "document_type", "summary"},
+            "neighborhood": {"sv_id", "status", "urgency", "source", "document_type",
+                           "plaintiff", "defendant", "court_decision", "summary",
+                           "strategy", "drive_link", "next_deadline", "last_action", "tags"},
             "full": None,
         }
         if density not in DENSITY_FIELDS:
@@ -1333,9 +1400,12 @@ def main():
     print(f"  openrouter:  {'set' if OPENROUTER_KEY else 'not set'}")
     print(f"  static_dir:  {STATIC_DIR}")
 
-    if SHEET_URL:
+    # Auto-load sheet: try SHEET_URL env, then LEGAL_SHEET_URL (Google Sheet)
+    sheet_src = SHEET_URL or LEGAL_SHEET_URL
+    if sheet_src:
+        print(f"  sheet:       loading from {'env' if SHEET_URL else 'Google Sheet'}...")
         import threading
-        threading.Thread(target=SHEET.load, args=(SHEET_URL,), daemon=True).start()
+        threading.Thread(target=SHEET.load, args=(sheet_src,), daemon=True).start()
 
     print(f"  ready:       http://localhost:{PORT}/")
     server = HTTPServer(("0.0.0.0", PORT), Handler)

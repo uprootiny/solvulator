@@ -12,7 +12,6 @@
 <link rel="apple-touch-icon" href="/icon-192.png"/>
 <title>סולבולטור · Storyboard</title>
 <link rel="stylesheet" href="/shared.css"/>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 /* page-specific overrides */
 html,body{min-height:100vh;min-height:100dvh;font-size:14px;overflow:hidden;touch-action:none}
@@ -185,39 +184,6 @@ html,body{min-height:100vh;min-height:100dvh;font-size:14px;overflow:hidden;touc
   z-index:200;opacity:0;transition:opacity .3s;pointer-events:none}
 .share-toast.show{opacity:1}
 
-/* ═══ SETTINGS PANEL (iOS sheet style) ═══ */
-#settings-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:300;
-  opacity:0;pointer-events:none;transition:opacity .3s ease}
-#settings-overlay.open{opacity:1;pointer-events:auto}
-#settings-panel{position:fixed;bottom:0;left:0;right:0;z-index:301;
-  background:var(--s1);border-top:1px solid var(--border);border-radius:16px 16px 0 0;
-  padding:16px 20px calc(20px + var(--safe-b));max-height:80vh;overflow-y:auto;
-  transform:translateY(100%);transition:transform .35s cubic-bezier(.32,.72,0,1)}
-#settings-panel.open{transform:translateY(0)}
-.settings-handle{width:36px;height:4px;background:var(--border-hi);border-radius:2px;
-  margin:0 auto 16px}
-.settings-title{font-family:var(--mono);font-size:11px;color:var(--gold);
-  letter-spacing:2px;text-transform:uppercase;margin-bottom:12px}
-.settings-field{margin-bottom:12px}
-.settings-field label{display:block;font-size:10px;color:var(--dim);
-  font-family:var(--mono);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
-.settings-field input{width:100%;font-size:12px;padding:10px;background:var(--bg);
-  border:1px solid var(--border);border-radius:8px;color:var(--text);
-  font-family:var(--mono);outline:none}
-.settings-field input:focus{border-color:var(--gold)}
-.settings-btn{width:100%;padding:12px;border-radius:8px;font-size:12px;
-  font-family:var(--mono);letter-spacing:1px;margin-bottom:8px;min-height:44px;
-  transition:all .2s}
-.settings-btn.primary{background:var(--gold);color:var(--bg)}
-.settings-btn.primary:active{opacity:0.8}
-.settings-btn.secondary{background:var(--s2);border:1px solid var(--border);color:var(--text)}
-.settings-btn.secondary:active{background:var(--s3)}
-.settings-btn.danger{background:rgba(224,82,82,0.15);color:var(--red);border:1px solid rgba(224,82,82,0.3)}
-.settings-status{font-size:10px;font-family:var(--mono);padding:6px 10px;
-  border-radius:6px;margin-bottom:12px;display:flex;align-items:center;gap:6px}
-.settings-status.connected{background:rgba(61,184,122,0.12);color:var(--green)}
-.settings-status.disconnected{background:rgba(224,82,82,0.12);color:var(--red)}
-.settings-divider{height:1px;background:var(--border);margin:16px 0}
 
 /* ═══ FAB (Floating Action Button) ═══ */
 #doc-fab{position:fixed;bottom:calc(70px + var(--safe-b));right:16px;z-index:150;
@@ -326,10 +292,6 @@ html,body{min-height:100vh;min-height:100dvh;font-size:14px;overflow:hidden;touc
   color:var(--bg);font-size:9px;font-family:var(--mono);font-weight:700;
   padding:0 4px;margin-left:6px;vertical-align:middle}
 
-/* ═══ GOOGLE DRIVE PICKER OPTION ═══ */
-.intake-option.drive{border-color:rgba(74,143,232,0.3)}
-.intake-option.drive .io-icon{color:var(--blue)}
-
 /* ═══ RESPONSIVE ═══ */
 @media(min-width:768px){
   #canvas{max-width:640px;margin:0 auto}
@@ -383,10 +345,6 @@ html,body{min-height:100vh;min-height:100dvh;font-size:14px;overflow:hidden;touc
       <div class="io-icon">&#x1F4DD;</div>
       <div><div class="io-label">Paste Text</div><div class="io-sub">Copy-paste document content</div></div>
     </div>
-    <div class="intake-option drive" id="drive-option" style="display:none" onclick="openDrivePicker()">
-      <div class="io-icon">&#x2601;</div>
-      <div><div class="io-label">Browse Drive</div><div class="io-sub">Select from Google Drive</div></div>
-    </div>
     <div class="intake-cancel" onclick="closeIntake()">Cancel</div>
   </div>
 
@@ -431,33 +389,6 @@ html,body{min-height:100vh;min-height:100dvh;font-size:14px;overflow:hidden;touc
   </div>
 </div>
 
-<div id="settings-overlay" onclick="closeSettings()"></div>
-<div id="settings-panel">
-  <div class="settings-handle"></div>
-  <div class="settings-title">Google Sheets Connection</div>
-  <div id="gsheet-status" class="settings-status disconnected">Not connected</div>
-
-  <div class="settings-field">
-    <label>Google OAuth Client ID</label>
-    <input type="text" id="gs-client-id" placeholder="xxxx.apps.googleusercontent.com"/>
-  </div>
-
-  <button class="settings-btn primary" id="gs-connect-btn" onclick="connectGoogle()">Connect to Google</button>
-
-  <div class="settings-divider"></div>
-
-  <div class="settings-field">
-    <label>Sheet ID or URL</label>
-    <input type="text" id="gs-sheet-id" placeholder="Sheet ID or full Google Sheets URL"/>
-  </div>
-
-  <button class="settings-btn secondary" onclick="saveSheetSettings()">Save Settings</button>
-  <button class="settings-btn secondary" onclick="reloadSheet()">Reload Sheet</button>
-
-  <div class="settings-divider"></div>
-
-  <button class="settings-btn danger" onclick="disconnectGoogle()">Disconnect</button>
-</div>
 
 <nav id="nav">
   <button class="nav-btn active" data-zoom="0" onclick="zoomTo(0)">
@@ -474,9 +405,6 @@ html,body{min-height:100vh;min-height:100dvh;font-size:14px;overflow:hidden;touc
   </button>
   <button class="nav-btn" data-zoom="4" onclick="zoomTo(4)">
     <span style="font-size:20px">&#x270E;</span><span>Deep</span>
-  </button>
-  <button class="nav-btn" onclick="openSettings()">
-    <span style="font-size:20px">&#x2699;</span><span>Sheet</span>
   </button>
 </nav>
 
@@ -1102,188 +1030,6 @@ async function processWithGemini(svId) {
   }
 }
 
-// ═══════════════════════════════════════════════
-// GOOGLE SHEETS OAUTH + SETTINGS
-// ═══════════════════════════════════════════════
-
-let gTokenClient = null;
-let gAccessToken = localStorage.getItem('sv-gtoken') || null;
-
-function extractSheetId(input) {
-  if(!input) return null;
-  // Handle full URLs: https://docs.google.com/spreadsheets/d/SHEET_ID/...
-  const m = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
-  if(m) return m[1];
-  // Handle bare IDs (no slashes)
-  if(!input.includes('/') && input.length > 10) return input.trim();
-  return null;
-}
-
-function openSettings() {
-  // Populate fields from localStorage
-  document.getElementById('gs-client-id').value = localStorage.getItem('sv-gs-client-id') || '';
-  document.getElementById('gs-sheet-id').value = localStorage.getItem('sv-gs-sheet-id') || '';
-  updateSettingsStatus();
-  document.getElementById('settings-overlay').classList.add('open');
-  document.getElementById('settings-panel').classList.add('open');
-}
-
-function closeSettings() {
-  document.getElementById('settings-overlay').classList.remove('open');
-  document.getElementById('settings-panel').classList.remove('open');
-}
-
-function updateSettingsStatus() {
-  const el = document.getElementById('gsheet-status');
-  const sheetId = localStorage.getItem('sv-gs-sheet-id');
-  if(gAccessToken && sheetId) {
-    el.className = 'settings-status connected';
-    el.textContent = 'Connected · Sheet: ' + extractSheetId(sheetId)?.slice(0,12) + '...';
-  } else if(gAccessToken) {
-    el.className = 'settings-status connected';
-    el.textContent = 'Google connected · No sheet ID set';
-  } else {
-    el.className = 'settings-status disconnected';
-    el.textContent = 'Not connected';
-  }
-  // Update connect button text
-  const btn = document.getElementById('gs-connect-btn');
-  btn.textContent = gAccessToken ? 'Re-authenticate' : 'Connect to Google';
-}
-
-function connectGoogle() {
-  const clientId = document.getElementById('gs-client-id').value.trim();
-  if(!clientId) {
-    alert('Enter a Google OAuth Client ID first');
-    return;
-  }
-  localStorage.setItem('sv-gs-client-id', clientId);
-
-  // Use Google Identity Services token model
-  gTokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: clientId,
-    scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
-    callback: (response) => {
-      if(response.error) {
-        console.error('OAuth error:', response);
-        return;
-      }
-      gAccessToken = response.access_token;
-      localStorage.setItem('sv-gtoken', gAccessToken);
-      updateSettingsStatus();
-      // Auto-load if sheet ID is set
-      const sheetId = localStorage.getItem('sv-gs-sheet-id');
-      if(sheetId) loadCases();
-    }
-  });
-  gTokenClient.requestAccessToken();
-}
-
-function disconnectGoogle() {
-  gAccessToken = null;
-  localStorage.removeItem('sv-gtoken');
-  localStorage.removeItem('sv-gs-client-id');
-  localStorage.removeItem('sv-gs-sheet-id');
-  document.getElementById('gs-client-id').value = '';
-  document.getElementById('gs-sheet-id').value = '';
-  updateSettingsStatus();
-  // Revert to sample data
-  state.cases = SAMPLE_CASES;
-  render();
-}
-
-function saveSheetSettings() {
-  const clientId = document.getElementById('gs-client-id').value.trim();
-  const sheetInput = document.getElementById('gs-sheet-id').value.trim();
-  if(clientId) localStorage.setItem('sv-gs-client-id', clientId);
-  if(sheetInput) localStorage.setItem('sv-gs-sheet-id', sheetInput);
-  updateSettingsStatus();
-  closeSettings();
-  loadCases();
-}
-
-async function reloadSheet() {
-  closeSettings();
-  // Trigger backend reload
-  try {
-    await fetch(API + '/sheet/reload', {method:'POST'});
-  } catch(e) {
-    console.log('Backend reload not available:', e.message);
-  }
-  // Refresh local view
-  await loadCases();
-  const toast = document.getElementById('share-toast');
-  toast.textContent = 'Sheet reloaded';
-  toast.classList.add('show');
-  setTimeout(() => toast.classList.remove('show'), 2000);
-}
-
-function parseSheetRows(rows) {
-  if(!rows || rows.length < 2) return [];
-  const headers = rows[0].map(h => (h||'').toString().trim());
-  // Build column index map (case-insensitive)
-  const colIdx = {};
-  headers.forEach((h, i) => { colIdx[h.toLowerCase().replace(/\s+/g,'_')] = i; });
-
-  // Map known column names
-  const col = (row, ...names) => {
-    for(const n of names) {
-      const idx = colIdx[n.toLowerCase().replace(/\s+/g,'_')];
-      if(idx !== undefined && row[idx] !== undefined) return row[idx];
-    }
-    return '';
-  };
-
-  return rows.slice(1).filter(r => r && r.length > 0).map(r => {
-    const svId = col(r, 'SV_ID', 'sv_id', 'id', 'case_id') || ('SV-' + Math.random().toString(36).slice(2,7));
-    const stage = parseInt(col(r, 'Stage', 'stage'), 10) || 0;
-    const status = col(r, 'Status', 'status') || 'PENDING';
-    const source = col(r, 'Source', 'source') || '';
-    const docType = col(r, 'Document_Type', 'document_type', 'doc_type', 'type') || '';
-    const urgency = (col(r, 'Urgency', 'urgency') || 'medium').toLowerCase();
-    const amount = parseFloat(col(r, 'Amount', 'amount')) || 0;
-
-    return {
-      sv_id: svId, stage, status, source, doc_type: docType,
-      urgency, amount, case_number: svId,
-      parties: {petitioner: '—', respondent: source, judge: ''},
-      summary_he: `${docType} — ${source} — Stage ${stage}`,
-      summary_en: '', stakes: [], deadlines: [], events: [], dependencies: []
-    };
-  });
-}
-
-async function loadFromGoogleSheets() {
-  const sheetInput = localStorage.getItem('sv-gs-sheet-id');
-  const sheetId = extractSheetId(sheetInput);
-  if(!sheetId || !gAccessToken) return false;
-
-  try {
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A:Z`;
-    const resp = await fetch(url, {
-      headers: {'Authorization': 'Bearer ' + gAccessToken}
-    });
-    if(!resp.ok) {
-      if(resp.status === 401) {
-        // Token expired, clear it
-        gAccessToken = null;
-        localStorage.removeItem('sv-gtoken');
-        console.log('Google token expired, cleared');
-      }
-      return false;
-    }
-    const data = await resp.json();
-    const parsed = parseSheetRows(data.values);
-    if(parsed.length > 0) {
-      state.cases = parsed;
-      console.log(`Loaded ${parsed.length} cases from Google Sheets`);
-      return true;
-    }
-  } catch(e) {
-    console.error('Google Sheets API error:', e);
-  }
-  return false;
-}
 
 // ═══════════════════════════════════════════════
 // DOCUMENT MANAGEMENT
@@ -1340,10 +1086,6 @@ function toggleIntake() {
   const fab = document.getElementById('doc-fab');
   const isOpen = sheet.classList.contains('open');
   if (isOpen) { closeIntake(); } else {
-    // Check if Drive option should show
-    const driveOpt = document.getElementById('drive-option');
-    driveOpt.style.display = localStorage.getItem('sv-gtoken') ? 'flex' : 'none';
-    // Reset to main options
     backToIntakeOptions();
     overlay.classList.add('open');
     sheet.classList.add('open');
@@ -1588,85 +1330,6 @@ document.addEventListener('drop', async e => {
   }
 });
 
-// ─── GOOGLE DRIVE PICKER ───
-function openDrivePicker() {
-  closeIntake();
-  const token = localStorage.getItem('sv-gtoken');
-  if (!token) { showToast('Connect Google first in Settings'); return; }
-
-  // Load Google Picker API if not loaded
-  if (typeof google === 'undefined' || !google.picker) {
-    const script = document.createElement('script');
-    script.src = 'https://apis.google.com/js/api.js';
-    script.onload = () => {
-      gapi.load('picker', () => createDrivePicker(token));
-    };
-    document.head.appendChild(script);
-  } else {
-    createDrivePicker(token);
-  }
-}
-
-function createDrivePicker(token) {
-  try {
-    const picker = new google.picker.PickerBuilder()
-      .addView(google.picker.ViewId.DOCS)
-      .addView(google.picker.ViewId.RECENTLY_PICKED)
-      .setOAuthToken(token)
-      .setCallback(drivePickerCallback)
-      .build();
-    picker.setVisible(true);
-  } catch (e) {
-    showToast('Drive picker error: ' + e.message);
-  }
-}
-
-async function drivePickerCallback(data) {
-  if (data.action !== 'picked' || !data.docs?.length) return;
-  const doc = data.docs[0];
-  const driveUrl = doc.url || ('https://drive.google.com/file/d/' + doc.id);
-  showToast('Fetching from Drive...');
-
-  try {
-    const resp = await fetch(API + '/doc/from-url', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: driveUrl, case_id: state.selectedCase?.sv_id || null })
-    });
-    const result = await resp.json();
-    const newDoc = {
-      id: result.id || ('doc-' + Date.now()),
-      name: doc.name || 'Drive document',
-      type: doc.mimeType || 'application/pdf',
-      size: doc.sizeBytes || 0,
-      date: new Date().toISOString(),
-      case_id: state.selectedCase?.sv_id || null,
-      mime: doc.mimeType,
-      url: driveUrl
-    };
-    state.documents.push(newDoc);
-    saveDocState();
-    showToast('Imported: ' + newDoc.name);
-    render();
-  } catch (e) {
-    const newDoc = {
-      id: 'doc-' + Date.now(),
-      name: doc.name || 'Drive document',
-      type: doc.mimeType || 'application/pdf',
-      size: doc.sizeBytes || 0,
-      date: new Date().toISOString(),
-      case_id: state.selectedCase?.sv_id || null,
-      mime: doc.mimeType,
-      url: driveUrl,
-      local: true
-    };
-    state.documents.push(newDoc);
-    saveDocState();
-    showToast('Saved Drive reference locally');
-    render();
-  }
-}
-
 // ─── DOCUMENT VIEWER HTML ───
 function renderDocViewer(doc) {
   const ti = docTypeIcon(doc.mime, doc.name);
@@ -1775,9 +1438,7 @@ function showToast(msg) {
 // ═══════════════════════════════════════════════
 
 async function loadCases() {
-  let loaded = false;
-
-  // 1. Try backend API first
+  // Try backend API, fall back to sample data
   try {
     const resp = await fetch(API + '/sheet/view?density=full');
     const data = await resp.json();
@@ -1786,11 +1447,9 @@ async function loadCases() {
         // Check if SAMPLE_CASES has a rich version of this case
         const sample = SAMPLE_CASES.find(s => s.sv_id === r.sv_id);
         if(sample) {
-          // Merge: sheet data enriches sample (fresh status/stage from sheet)
           return {...sample, stage: r.stage ?? sample.stage, status: r.status || sample.status,
                   urgency: r.urgency || sample.urgency, amount: r.amount ?? sample.amount};
         }
-        // Auto-generate timeline from metadata
         const events = [];
         const today = new Date().toISOString().slice(0,10);
         if(r.stage >= 1) events.push({date:today, type:'procedural', title:`Stage ${r.stage}/12 — ${r.status}`,
@@ -1800,7 +1459,6 @@ async function loadCases() {
         if(r.defendant_deadline) events.push({date:r.defendant_deadline, type:'critical',
           title:'Defendant deadline', sub:r.defendant_deadline});
         if(r.decision) events.push({date:today, type:'adverse', title:'Decision', sub:r.decision.slice(0,120)});
-        // Auto-generate stakes from fields
         const stakes = [];
         if(r.amount > 0) stakes.push('fee');
         if((r.source||'').includes('HCJ')||/בג.ץ/.test(r.source||'')) stakes.push('constitutional');
@@ -1823,22 +1481,14 @@ async function loadCases() {
           defendant_strategy: r.defendant_strategy || '',
         };
       });
-      // Also add any SAMPLE_CASES not in sheet data
       SAMPLE_CASES.forEach(s => {
         if(!state.cases.find(c => c.sv_id === s.sv_id)) state.cases.push(s);
       });
-      loaded = true;
     }
   } catch(e) {
     console.log('Backend sheet API unavailable');
   }
 
-  // 2. If backend didn't work, try direct Google Sheets API
-  if(!loaded && gAccessToken) {
-    loaded = await loadFromGoogleSheets();
-  }
-
-  // 3. Fallback to sample data
   if(!state.cases.length) state.cases = SAMPLE_CASES;
   render();
 }

@@ -5,112 +5,262 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Solvulator Pilot – Live Pipeline</title>
 <link rel="stylesheet" href="/shared.css"/>
-<script src="https://cdn.tailwindcss.com"></script>
 <style>
-  body{font-family:system-ui,-apple-system,"SF Pro"}
-  .glass{backdrop-filter:blur(12px);background:rgba(255,255,255,.05)}
-  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1f2937;padding:12px 22px;border-radius:12px;opacity:0;transition:.3s;pointer-events:none;z-index:100}
-  .toast.show{opacity:1}
-  pre{white-space:pre-wrap;word-break:break-word}
-  .doc-input{width:100%;background:rgba(0,0,0,.3);border:1px solid #374151;border-radius:8px;padding:8px;color:#fff;font-size:12px;resize:vertical;min-height:80px;font-family:inherit}
-  .doc-input:focus{border-color:#3b82f6;outline:none}
-  .gate-badge{display:inline-block;background:#92400e;color:#fbbf24;font-size:10px;padding:1px 6px;border-radius:4px;margin-right:4px}
-  .nav-link{color:#9ca3af;text-decoration:none;font-size:12px}
-  .nav-link:hover{color:#fff}
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap');
+  body{font-family:var(--sans);display:flex;min-height:100vh}
+  pre{white-space:pre-wrap;word-break:break-word;font-family:'JetBrains Mono',var(--mono)}
+  code,.mono{font-family:'JetBrains Mono',var(--mono)}
+
+  /* ── layout ── */
+  .sidebar{width:288px;background:var(--s1);display:flex;flex-direction:column;
+    height:100vh;overflow:hidden;border-left:1px solid var(--border)}
+  .sidebar-header{padding:16px;border-bottom:1px solid var(--border)}
+  .sidebar-body{flex:1;overflow-y:auto;padding:12px}
+  .sidebar-footer{padding:12px;border-top:1px solid var(--border);font-size:12px;color:var(--dim)}
+  .main{flex:1;padding:24px;overflow:auto}
+
+  /* ── nav pills ── */
+  .nav-pills{display:flex;gap:8px;margin-top:8px;font-size:12px}
+  .nav-pill{padding:4px 8px;border-radius:6px;background:var(--s2);color:var(--mid);
+    text-decoration:none;transition:background .15s}
+  .nav-pill:hover{background:var(--s3);color:var(--text);text-decoration:none}
+  .nav-pill.active{background:rgba(74,143,232,0.15);color:var(--blue)}
+
+  /* ── doc library ── */
+  .doc-lib-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .doc-lib-header h2{font-size:11px;font-weight:700;color:var(--dim);letter-spacing:1.5px;
+    font-family:'JetBrains Mono',var(--mono)}
+  .upload-btn{font-size:10px;background:rgba(74,143,232,0.12);color:var(--blue);
+    padding:3px 8px;border-radius:4px;cursor:pointer;min-height:24px}
+  .upload-btn:hover{background:rgba(74,143,232,0.2)}
+  .upload-btn input{display:none}
+  .doc-item{display:flex;align-items:start;gap:8px;padding:8px;border-radius:8px;
+    cursor:pointer;transition:all .15s;border:1px solid transparent}
+  .doc-item:hover{background:var(--s2);border-color:var(--border)}
+  .doc-item+.doc-item{margin-top:4px}
+
+  /* ── viewer panel ── */
+  .viewer-panel{border-top:1px solid var(--border);background:var(--bg);
+    max-height:40vh;overflow-y:auto;display:none}
+  .viewer-panel.open{display:block}
+  .viewer-header{display:flex;justify-content:space-between;align-items:center;
+    padding:12px;position:sticky;top:0;background:var(--bg);z-index:10}
+  .viewer-header h3{font-size:12px;font-weight:700;color:var(--mid);overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap}
+  .viewer-actions{display:flex;gap:6px}
+  .viewer-actions button{font-size:10px;padding:3px 8px;border-radius:4px;min-height:24px}
+  .btn-analyze{background:rgba(61,184,122,0.12);color:var(--green)}
+  .btn-open{background:var(--s3);color:var(--mid)}
+  .btn-close{color:var(--dim);min-height:24px;padding:3px 4px}
+
+  /* ── top bar ── */
+  .top-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+  .top-bar h2{font-size:20px;font-weight:600}
+  .top-controls{display:flex;gap:8px;align-items:center}
+  .top-controls select{background:var(--s2);color:var(--text);font-size:13px;
+    border-radius:8px;padding:8px 12px;border:1px solid var(--border);outline:none}
+  .top-controls select:focus{border-color:var(--blue)}
+  .btn-start{background:var(--blue);color:#fff;padding:8px 20px;border-radius:12px;font-size:13px;
+    transition:background .15s}
+  .btn-start:hover{background:#5a9af8}
+  .btn-step{background:var(--green);color:#fff;padding:8px 16px;border-radius:12px;font-size:13px;
+    display:none;transition:background .15s}
+  .btn-step:hover{background:#4dc88a}
+  .btn-approve{background:var(--orange);color:#fff;padding:8px 16px;border-radius:12px;font-size:13px;
+    display:none;transition:background .15s}
+  .btn-approve:hover{background:#e8904a}
+
+  /* ── document input panel ── */
+  .doc-panel{backdrop-filter:blur(12px);background:rgba(255,255,255,.05);
+    padding:16px;border-radius:16px;margin-bottom:16px;border:1px solid var(--border);
+    position:relative;overflow:hidden}
+  .doc-input{width:100%;background:rgba(0,0,0,.3);border:1px solid var(--border);
+    border-radius:8px;padding:8px;color:var(--text);font-size:12px;resize:vertical;
+    min-height:80px;font-family:inherit;outline:none}
+  .doc-input:focus{border-color:var(--blue)}
+  .doc-panel-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .upload-label{background:var(--s2);font-size:12px;padding:6px 12px;border-radius:8px;
+    cursor:pointer;color:var(--mid);transition:background .15s}
+  .upload-label:hover{background:var(--s3)}
+  .upload-label input{display:none}
+
+  /* ── scanner overlay ── */
+  @keyframes scanSweep{
+    0%{top:-100%}
+    100%{top:200%}
+  }
+  .scanner-overlay{position:absolute;inset:0;pointer-events:none;overflow:hidden;opacity:0;transition:opacity .3s}
+  .scanner-overlay.active{opacity:1}
+  .scanner-line{position:absolute;left:0;right:0;height:60px;
+    background:linear-gradient(180deg,transparent,rgba(74,143,232,0.15),rgba(74,143,232,0.08),transparent);
+    animation:scanSweep 2s linear infinite}
+
+  /* ── pipeline cards ── */
+  .pipeline-row{display:flex;gap:8px;overflow-x:auto;padding-bottom:16px;margin-bottom:16px}
+  .agent-card{min-width:170px;backdrop-filter:blur(12px);background:rgba(255,255,255,.05);
+    padding:12px;border-radius:12px;border:1px solid var(--border);opacity:0.4;
+    cursor:pointer;transition:all .25s;position:relative}
+  .agent-card.state-running{opacity:1;border-color:var(--blue);border-left:3px solid var(--blue)}
+  .agent-card.state-done{opacity:1;border-color:var(--green);border-left:3px solid var(--green)}
+  .agent-card.state-gate{opacity:1;border-color:var(--orange);border-left:3px solid var(--orange)}
+  .agent-card.state-error{opacity:1;border-color:var(--red);border-left:3px solid var(--red)}
+  .agent-card.state-running,.agent-card.state-done,.agent-card.state-gate,.agent-card.state-error{opacity:1}
+  .agent-label{font-size:10px;color:var(--dim);display:flex;align-items:center;gap:4px}
+  .agent-name{font-weight:700;font-size:13px;margin-top:4px;color:var(--text)}
+  .agent-status{margin-top:8px;font-size:12px;color:var(--dim)}
+  .agent-progress{width:100%;height:3px;background:var(--s3);border-radius:2px;margin-top:6px;display:none}
+  .agent-progress-bar{height:100%;background:var(--blue);border-radius:2px;transition:width .3s}
+  .gate-badge{display:inline-block;background:rgba(224,128,58,0.2);color:var(--orange);
+    font-size:10px;padding:1px 6px;border-radius:4px}
+  .pipeline-arrow{align-self:center;color:var(--border);font-size:12px}
+
+  /* ── status lights ── */
+  .status-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-left:6px}
+  .status-dot.off{background:var(--dim)}
+  .status-dot.active{background:var(--blue);box-shadow:0 0 6px var(--blue);animation:pulse 1.5s ease infinite}
+  .status-dot.done{background:var(--green);box-shadow:0 0 6px var(--green)}
+  .status-dot.error{background:var(--red);box-shadow:0 0 6px var(--red)}
+  .status-dot.gate{background:var(--orange);box-shadow:0 0 6px var(--orange)}
+
+  /* ── inspector ── */
+  .inspector-grid{display:grid;grid-template-columns:2fr 1fr;gap:16px}
+  .inspector-panel{backdrop-filter:blur(12px);background:rgba(255,255,255,.05);
+    padding:16px;border-radius:16px;border:1px solid var(--border)}
+  .inspector-panel h3{font-weight:700;margin-bottom:8px}
+  .inspector-pre{font-size:12px;background:rgba(0,0,0,.4);padding:12px;border-radius:8px;
+    max-height:400px;overflow:auto;color:var(--mid);font-family:'JetBrains Mono',var(--mono)}
+  .inspector-meta{font-size:12px;color:var(--dim);font-family:'JetBrains Mono',var(--mono)}
+
+  /* ── run status panel ── */
+  .run-status{font-size:13px;color:var(--mid)}
+  .run-status>div{margin-bottom:8px}
+
+  /* ── total exposure result ── */
+  .result-panel{margin-top:12px;padding:12px;border-radius:8px;background:var(--s2);
+    border:1px solid var(--border);display:none}
+  .result-panel.visible{display:block}
+  .result-label{font-size:10px;color:var(--dim);font-family:'JetBrains Mono',var(--mono);
+    letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
+  .result-value{font-size:18px;font-weight:700;color:var(--gold);
+    font-family:'JetBrains Mono',var(--mono)}
+
+  /* ── resume banner ── */
+  .resume-banner{display:none;padding:10px 16px;background:rgba(74,143,232,0.1);
+    border:1px solid rgba(74,143,232,0.3);border-radius:8px;margin-bottom:16px;
+    font-size:13px;color:var(--blue);align-items:center;gap:12px}
+  .resume-banner.visible{display:flex}
+  .resume-banner button{background:var(--blue);color:#fff;padding:6px 14px;
+    border-radius:6px;font-size:12px;min-height:32px}
+  .resume-banner .dismiss{background:none;color:var(--dim);min-height:32px;font-size:12px}
+
+  /* ── health status ── */
+  .health-dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-left:4px}
 </style>
 </head>
-<body class="bg-[#0B0F14] text-white min-h-screen flex">
-<aside class="w-72 bg-[#11161C] flex flex-col h-screen overflow-hidden">
-  <div class="p-4 border-b border-gray-800">
-    <h1 class="text-lg font-bold">Solvulator</h1>
-    <div class="flex gap-2 mt-2 text-xs">
-      <a href="/" class="px-2 py-1 rounded bg-[#1C2330] hover:bg-[#2C3340]">Storyboard</a>
-      <span class="px-2 py-1 rounded bg-blue-900/40 text-blue-300">Pipeline</span>
-      <a href="/check.html" class="px-2 py-1 rounded bg-[#1C2330] hover:bg-[#2C3340]">Check</a>
+<body>
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <h1 style="font-size:18px;font-weight:700">Solvulator</h1>
+    <div class="nav-pills">
+      <a href="/" class="nav-pill">Storyboard</a>
+      <span class="nav-pill active">Pipeline</span>
+      <a href="/check.html" class="nav-pill">Check</a>
     </div>
   </div>
 
   <!-- Document Library -->
-  <div class="flex-1 overflow-y-auto p-3">
-    <div class="flex justify-between items-center mb-2">
-      <h2 class="text-xs font-bold text-gray-400 tracking-wider">DOCUMENTS</h2>
-      <label class="text-[10px] bg-blue-900/30 text-blue-300 px-2 py-0.5 rounded cursor-pointer hover:bg-blue-900/50">
+  <div class="sidebar-body">
+    <div class="doc-lib-header">
+      <h2>DOCUMENTS</h2>
+      <label class="upload-btn">
         + Upload
-        <input type="file" accept=".pdf,.txt,.doc,.docx,.jpg,.png" class="hidden" onchange="handleFileUpload(this)"/>
+        <input type="file" accept=".pdf,.txt,.doc,.docx,.jpg,.png" onchange="handleFileUpload(this)"/>
       </label>
     </div>
-    <div id="doc-library" class="space-y-1.5">
-      <div class="text-xs text-gray-600 p-2">Loading...</div>
+    <div id="doc-library">
+      <div style="font-size:12px;color:var(--dim);padding:8px">Loading...</div>
     </div>
   </div>
 
-  <!-- Viewer panel (slides up when doc selected) -->
-  <div id="doc-viewer" class="border-t border-gray-800 bg-[#0D1117] max-h-[40vh] overflow-y-auto hidden">
-    <div class="flex justify-between items-center p-3 sticky top-0 bg-[#0D1117] z-10">
-      <h3 id="viewer-title" class="text-xs font-bold text-gray-300 truncate"></h3>
-      <div class="flex gap-1.5">
-        <button onclick="analyzeViewedDoc()" class="text-[10px] bg-emerald-900/30 text-emerald-300 px-2 py-0.5 rounded hover:bg-emerald-900/50">Analyze</button>
-        <button onclick="openDocNewTab()" class="text-[10px] bg-gray-700 text-gray-300 px-2 py-0.5 rounded hover:bg-gray-600">Open ↗</button>
-        <button onclick="closeViewer()" class="text-[10px] text-gray-500 hover:text-white px-1">✕</button>
+  <!-- Viewer panel -->
+  <div id="doc-viewer" class="viewer-panel">
+    <div class="viewer-header">
+      <h3 id="viewer-title"></h3>
+      <div class="viewer-actions">
+        <button class="btn-analyze" onclick="analyzeViewedDoc()">Analyze</button>
+        <button class="btn-open" onclick="openDocNewTab()">Open</button>
+        <button class="btn-close" onclick="closeViewer()">x</button>
       </div>
     </div>
-    <div id="viewer-content" class="px-3 pb-3"></div>
+    <div id="viewer-content" style="padding:0 12px 12px"></div>
   </div>
 
-  <div class="p-3 border-t border-gray-800 text-xs text-gray-600">
+  <div class="sidebar-footer">
     <div id="health-status">Checking...</div>
   </div>
 </aside>
 
-<main class="flex-1 p-6 overflow-auto">
-  <div class="flex justify-between items-center mb-4">
-    <h2 class="text-xl font-semibold">Pipeline Runner</h2>
-    <div class="flex gap-2">
-      <select id="doc-select" class="bg-[#1C2330] text-sm rounded-lg px-3 py-2 border border-gray-700">
+<main class="main">
+  <!-- Resume banner -->
+  <div id="resume-banner" class="resume-banner">
+    <span id="resume-text"></span>
+    <button onclick="resumeRun()">Resume</button>
+    <button class="dismiss" onclick="dismissResume()">Dismiss</button>
+  </div>
+
+  <div class="top-bar">
+    <h2>Pipeline Runner</h2>
+    <div class="top-controls">
+      <select id="doc-select">
         <option value="">-- Select document --</option>
       </select>
-      <button id="start" class="bg-blue-600 hover:bg-blue-500 px-5 py-2 rounded-xl text-sm">Start Pipeline</button>
-      <button id="step" class="bg-emerald-700 hover:bg-emerald-600 px-4 py-2 rounded-xl text-sm hidden">Next Step →</button>
-      <button id="approve" class="bg-amber-700 hover:bg-amber-600 px-4 py-2 rounded-xl text-sm hidden">Approve Gate</button>
+      <button id="start" class="btn-start">Start Pipeline</button>
+      <button id="step" class="btn-step">Next Step</button>
+      <button id="approve" class="btn-approve">Approve Gate</button>
     </div>
   </div>
 
   <!-- Document input -->
-  <div id="doc-panel" class="glass p-4 rounded-2xl mb-4">
-    <div class="flex justify-between items-center mb-2">
-      <h3 class="font-bold text-sm">Document Text</h3>
-      <div class="flex gap-2">
-        <label class="bg-[#1C2330] text-xs px-3 py-1.5 rounded-lg cursor-pointer hover:bg-[#2C3340]">
-          Upload PDF/TXT
-          <input type="file" accept=".pdf,.txt,.doc,.docx" class="hidden" onchange="handleFile(this)"/>
-        </label>
-      </div>
+  <div id="doc-panel" class="doc-panel">
+    <div class="scanner-overlay" id="scanner-overlay"><div class="scanner-line"></div></div>
+    <div class="doc-panel-header">
+      <h3 style="font-weight:700;font-size:14px">Document Text</h3>
+      <label class="upload-label">
+        Upload PDF/TXT
+        <input type="file" accept=".pdf,.txt,.doc,.docx" onchange="handleFile(this)"/>
+      </label>
     </div>
     <textarea id="doc-text" class="doc-input" rows="4" placeholder="Paste document text here, upload a file, or select from dropdown..."></textarea>
   </div>
 
   <!-- Pipeline cards -->
-  <div id="pipeline" class="flex gap-2 overflow-x-auto pb-4 mb-4"></div>
+  <div id="pipeline" class="pipeline-row"></div>
+
+  <!-- Result panel (total exposure) -->
+  <div id="result-panel" class="result-panel">
+    <div class="result-label">Total Exposure</div>
+    <div id="result-value" class="result-value">--</div>
+  </div>
 
   <!-- Inspector -->
-  <div class="grid grid-cols-3 gap-4">
-    <div class="col-span-2 glass p-4 rounded-2xl">
-      <div class="flex justify-between items-center mb-2">
-        <h3 id="inspector-title" class="font-bold">Select an agent</h3>
-        <span id="inspector-ms" class="text-xs text-gray-500"></span>
+  <div class="inspector-grid">
+    <div class="inspector-panel">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h3 id="inspector-title">Select an agent</h3>
+        <span id="inspector-ms" class="inspector-meta"></span>
       </div>
-      <pre id="inspector" class="text-xs bg-black/40 p-3 rounded-lg max-h-[400px] overflow-auto text-gray-300">Click "Start Pipeline" to begin</pre>
+      <pre id="inspector" class="inspector-pre">Click "Start Pipeline" to begin</pre>
     </div>
-    <div class="glass p-4 rounded-2xl">
-      <h3 class="font-bold mb-3">Run Status</h3>
-      <div id="sys" class="text-sm text-gray-400 space-y-2">
+    <div class="inspector-panel">
+      <h3>Run Status</h3>
+      <div id="sys" class="run-status">
         <div>Waiting for input</div>
       </div>
     </div>
   </div>
 </main>
 
-<div id="toast" class="toast"></div>
+<div class="toast" id="toast"></div>
 
 <script src="/shared.js"></script>
 <script>
@@ -134,59 +284,70 @@ let AGENTS = [
 let runId = null;
 let runState = null;
 let completedSteps = [];
+let resumeRunId = null;
 
 // Build pipeline cards
 const pipeline = document.getElementById('pipeline');
 AGENTS.forEach((a, i) => {
   const c = document.createElement('div');
-  c.className = 'min-w-[170px] glass p-3 rounded-xl border border-gray-700/50 opacity-40 cursor-pointer transition-all';
+  c.className = 'agent-card';
+  c.id = 'card-' + i;
   c.innerHTML = `
-    <div class="text-[10px] text-gray-500 flex items-center gap-1">
+    <div class="agent-label">
+      <span class="status-dot off" id="dot-${i}"></span>
       Agent ${String(i+1).padStart(2,'0')}
       ${a.gate ? '<span class="gate-badge">GATE</span>' : ''}
     </div>
-    <div class="font-bold text-[13px] mt-1">${a.t}</div>
-    <div id="st-${i}" class="mt-2 text-xs text-gray-500">locked</div>
-    <div id="pg-${i}" class="w-full h-1 bg-gray-700 rounded mt-1.5 hidden">
-      <div class="bg-blue-500 h-1 rounded transition-all" style="width:0%"></div>
+    <div class="agent-name">${a.t}</div>
+    <div class="agent-status" id="st-${i}">locked</div>
+    <div class="agent-progress" id="pg-${i}">
+      <div class="agent-progress-bar" id="pgbar-${i}" style="width:0%"></div>
     </div>`;
   c.onclick = () => clickAgent(i);
   pipeline.appendChild(c);
   if (i < AGENTS.length - 1) {
     const arr = document.createElement('div');
-    arr.className = 'self-center text-gray-700 text-xs';
-    arr.textContent = '→';
+    arr.className = 'pipeline-arrow';
+    arr.textContent = '\u2192';
     pipeline.appendChild(arr);
   }
 });
 
 function setCardState(i, state, pct = 0) {
-  const card = pipeline.children[i * 2];
-  const st = document.getElementById(`st-${i}`);
-  const pg = document.getElementById(`pg-${i}`);
-  card.classList.remove('opacity-40', 'border-blue-500', 'border-green-500', 'border-amber-500', 'border-red-500');
+  const card = document.getElementById('card-' + i);
+  const st = document.getElementById('st-' + i);
+  const pg = document.getElementById('pg-' + i);
+  const pgbar = document.getElementById('pgbar-' + i);
+  const dot = document.getElementById('dot-' + i);
+  if (!card) return;
+
+  card.className = 'agent-card';
+  dot.className = 'status-dot off';
 
   if (state === 'running') {
-    card.classList.add('border-blue-500');
-    st.innerHTML = `<span class="text-blue-400">running… ${pct}%</span>`;
-    pg.classList.remove('hidden');
-    pg.firstElementChild.style.width = pct + '%';
+    card.classList.add('state-running');
+    dot.className = 'status-dot active';
+    st.innerHTML = '<span style="color:var(--blue)">running... ' + pct + '%</span>';
+    pg.style.display = 'block';
+    pgbar.style.width = pct + '%';
   } else if (state === 'done') {
-    card.classList.add('border-green-500');
-    st.innerHTML = '<span class="text-green-400">done</span>';
-    pg.classList.add('hidden');
+    card.classList.add('state-done');
+    dot.className = 'status-dot done';
+    st.innerHTML = '<span style="color:var(--green)">done</span>';
+    pg.style.display = 'none';
   } else if (state === 'gate') {
-    card.classList.add('border-amber-500');
-    st.innerHTML = '<span class="text-amber-400">awaiting approval</span>';
-    pg.classList.add('hidden');
+    card.classList.add('state-gate');
+    dot.className = 'status-dot gate';
+    st.innerHTML = '<span style="color:var(--orange)">awaiting approval</span>';
+    pg.style.display = 'none';
   } else if (state === 'error') {
-    card.classList.add('border-red-500');
-    st.innerHTML = '<span class="text-red-400">error</span>';
-    pg.classList.add('hidden');
+    card.classList.add('state-error');
+    dot.className = 'status-dot error';
+    st.innerHTML = '<span style="color:var(--red)">error</span>';
+    pg.style.display = 'none';
   } else {
-    card.classList.add('opacity-40');
     st.textContent = 'locked';
-    pg.classList.add('hidden');
+    pg.style.display = 'none';
   }
 }
 
@@ -196,24 +357,45 @@ function clickAgent(i) {
   }
   const step = completedSteps[i];
   if (!step) return;
-  document.getElementById('inspector-title').textContent = `Agent ${String(i+1).padStart(2,'0')} – ${AGENTS[i].t}`;
-  document.getElementById('inspector-ms').textContent = step.elapsed_ms ? `${step.elapsed_ms}ms` : '';
+  document.getElementById('inspector-title').textContent = 'Agent ' + String(i+1).padStart(2,'0') + ' \u2013 ' + AGENTS[i].t;
+  document.getElementById('inspector-ms').textContent = step.elapsed_ms ? step.elapsed_ms + 'ms' : '';
   document.getElementById('inspector').textContent = JSON.stringify(step.result || step, null, 2);
 }
 
 function updateSys() {
   const sys = document.getElementById('sys');
   const parts = [];
-  if (runId) parts.push(`<div class="text-xs font-mono text-gray-600">${runId}</div>`);
-  parts.push(`<div>Steps: ${completedSteps.length} / 12</div>`);
+  if (runId) parts.push('<div class="mono" style="font-size:11px;color:var(--dim)">' + runId + '</div>');
+  parts.push('<div>Steps: ' + completedSteps.length + ' / 12</div>');
   if (runState === 'paused_at_gate') {
-    parts.push(`<div class="text-amber-400">Waiting: human gate approval</div>`);
+    parts.push('<div style="color:var(--orange)">Waiting: human gate approval</div>');
   } else if (runState === 'completed') {
-    parts.push(`<div class="text-green-400">Pipeline complete</div>`);
+    parts.push('<div style="color:var(--green)">Pipeline complete</div>');
+    updateExposure();
   } else if (runState === 'running') {
-    parts.push(`<div class="text-blue-400">Running...</div>`);
+    parts.push('<div style="color:var(--blue)">Running...</div>');
   }
   sys.innerHTML = parts.join('');
+}
+
+function updateExposure() {
+  // Try to extract total exposure from damage agent (step 7)
+  const dmgStep = completedSteps[6]; // 07_damage
+  if (dmgStep && dmgStep.result) {
+    const r = dmgStep.result;
+    const total = r.total_exposure || r.total || r.amount || null;
+    if (total) {
+      document.getElementById('result-value').textContent = '\u20AA' + Number(total).toLocaleString();
+      document.getElementById('result-panel').classList.add('visible');
+    }
+  }
+}
+
+// ── Scanner overlay effect ──
+function setScannerActive(active) {
+  const el = document.getElementById('scanner-overlay');
+  if (active) el.classList.add('active');
+  else el.classList.remove('active');
 }
 
 // ── Start pipeline ──
@@ -221,13 +403,14 @@ document.getElementById('start').onclick = async () => {
   const docText = document.getElementById('doc-text').value.trim();
   if (!docText) { toast('Enter document text first'); return; }
 
-  // Reset
   completedSteps = [];
   runState = 'starting';
   AGENTS.forEach((_, i) => setCardState(i, 'locked'));
   document.getElementById('inspector').textContent = 'Starting pipeline...';
-  document.getElementById('step').classList.add('hidden');
-  document.getElementById('approve').classList.add('hidden');
+  document.getElementById('step').style.display = 'none';
+  document.getElementById('approve').style.display = 'none';
+  document.getElementById('result-panel').classList.remove('visible');
+  setScannerActive(true);
 
   try {
     const resp = await fetch(API + '/pipeline/start', {
@@ -236,15 +419,15 @@ document.getElementById('start').onclick = async () => {
       body: JSON.stringify({doc_text: docText})
     });
     const data = await resp.json();
-    if (data.error) { toast('Error: ' + data.error); return; }
+    if (data.error) { toast('Error: ' + data.error); setScannerActive(false); return; }
     runId = data.run_id;
     runState = 'pending';
     updateSys();
     toast('Pipeline started: ' + runId);
-    // Auto-run first step
     await runStep();
   } catch (e) {
     toast('Failed to start: ' + e.message);
+    setScannerActive(false);
   }
 };
 
@@ -252,13 +435,13 @@ document.getElementById('start').onclick = async () => {
 async function runStep() {
   if (!runId) return;
   const stepIdx = completedSteps.length;
-  if (stepIdx >= 12) { runState = 'completed'; updateSys(); return; }
+  if (stepIdx >= 12) { runState = 'completed'; setScannerActive(false); updateSys(); return; }
 
   setCardState(stepIdx, 'running', 10);
   runState = 'running';
   updateSys();
+  setScannerActive(true);
 
-  // Animate progress
   let pct = 10;
   const iv = setInterval(() => {
     pct = Math.min(90, pct + Math.random() * 15);
@@ -266,7 +449,7 @@ async function runStep() {
   }, 500);
 
   try {
-    const resp = await fetch(API + `/pipeline/${runId}/step`, {method: 'POST'});
+    const resp = await fetch(API + '/pipeline/' + runId + '/step', {method: 'POST'});
     clearInterval(iv);
     const data = await resp.json();
 
@@ -274,6 +457,7 @@ async function runStep() {
       setCardState(stepIdx, 'error');
       document.getElementById('inspector').textContent = JSON.stringify(data, null, 2);
       toast('Error at step ' + (stepIdx + 1));
+      setScannerActive(false);
       return;
     }
 
@@ -281,29 +465,29 @@ async function runStep() {
     completedSteps.push(data);
     clickAgent(stepIdx);
 
-    // Check for gate
     if (data.next_gate) {
       setCardState(stepIdx + 1, 'gate');
       runState = 'paused_at_gate';
-      document.getElementById('approve').classList.remove('hidden');
-      document.getElementById('step').classList.add('hidden');
-      toast(`Gate: ${data.next_gate.agent_name} requires approval`);
+      document.getElementById('approve').style.display = '';
+      document.getElementById('step').style.display = 'none';
+      toast('Gate: ' + data.next_gate.agent_name + ' requires approval');
+      setScannerActive(false);
     } else if (stepIdx + 1 < 12) {
-      // Auto-advance non-gate agents
-      document.getElementById('step').classList.remove('hidden');
-      document.getElementById('approve').classList.add('hidden');
+      document.getElementById('step').style.display = '';
+      document.getElementById('approve').style.display = 'none';
       runState = 'ready';
-      // Auto-run next step after brief pause
       setTimeout(runStep, 300);
     } else {
       runState = 'completed';
-      document.getElementById('step').classList.add('hidden');
+      document.getElementById('step').style.display = 'none';
+      setScannerActive(false);
       toast('Pipeline complete!');
     }
     updateSys();
   } catch (e) {
     clearInterval(iv);
     setCardState(stepIdx, 'error');
+    setScannerActive(false);
     toast('Step failed: ' + e.message);
   }
 }
@@ -311,13 +495,13 @@ async function runStep() {
 // ── Approve gate ──
 document.getElementById('approve').onclick = async () => {
   try {
-    const resp = await fetch(API + `/pipeline/${runId}/approve`, {method: 'POST'});
+    const resp = await fetch(API + '/pipeline/' + runId + '/approve', {method: 'POST'});
     const data = await resp.json();
     if (data.approved) {
       const gateIdx = completedSteps.length;
-      setCardState(gateIdx, 'locked'); // Reset gate card
-      document.getElementById('approve').classList.add('hidden');
-      toast('Gate approved — continuing');
+      setCardState(gateIdx, 'locked');
+      document.getElementById('approve').style.display = 'none';
+      toast('Gate approved \u2014 continuing');
       await runStep();
     }
   } catch (e) { toast('Approve failed: ' + e.message); }
@@ -330,10 +514,10 @@ let allDocs = [];
 let viewedDoc = null;
 
 function docIcon(type, name) {
-  if ((type||'').includes('pdf') || (name||'').endsWith('.pdf')) return '📄';
-  if ((type||'').includes('image')) return '🖼';
-  if ((type||'').includes('text') || (name||'').match(/\.(txt|md|csv)$/)) return '📝';
-  return '📎';
+  if ((type||'').includes('pdf') || (name||'').endsWith('.pdf')) return '\u{1F4C4}';
+  if ((type||'').includes('image')) return '\u{1F5BC}';
+  if ((type||'').includes('text') || (name||'').match(/\.(txt|md|csv)$/)) return '\u{1F4DD}';
+  return '\u{1F4CE}';
 }
 
 function renderDocLibrary() {
@@ -342,7 +526,7 @@ function renderDocLibrary() {
   sel.innerHTML = '<option value="">-- Select document --</option>';
 
   if (!allDocs.length) {
-    lib.innerHTML = '<div class="text-xs text-gray-600 p-2">No documents yet. Upload or paste a link.</div>';
+    lib.innerHTML = '<div style="font-size:12px;color:var(--dim);padding:8px">No documents yet. Upload or paste a link.</div>';
     return;
   }
 
@@ -350,33 +534,26 @@ function renderDocLibrary() {
     const icon = docIcon(d.type, d.filename);
     const isPdf = (d.type||'').includes('pdf');
     const isText = (d.type||'').includes('text');
-    return `
-    <div class="group p-2 rounded-lg hover:bg-[#1C2330] cursor-pointer transition-all border border-transparent hover:border-gray-700"
-         onclick="selectDoc('${d.doc_id}')">
-      <div class="flex items-start gap-2">
-        <span class="text-lg mt-0.5">${icon}</span>
-        <div class="flex-1 min-w-0">
-          <div class="text-xs font-medium text-gray-200 truncate">${d.filename}</div>
-          <div class="flex items-center gap-2 mt-0.5 text-[10px] text-gray-500">
-            <span>${formatSize(d.size)}</span>
-            ${d.sv_id ? `<span class="bg-blue-900/30 text-blue-300 px-1 rounded">${d.sv_id}</span>` : ''}
-            ${isPdf ? '<span class="text-red-400">PDF</span>' : ''}
-            ${isText ? '<span class="text-green-400">TXT</span>' : ''}
-          </div>
-          <div class="text-[10px] text-gray-600 mt-0.5">${formatDate(d.uploaded_at)}</div>
-        </div>
-        <div class="opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
-          <button onclick="event.stopPropagation();loadDocToPipeline('${d.doc_id}')" class="text-[10px] bg-blue-900/40 text-blue-300 px-1.5 py-0.5 rounded" title="Load into pipeline">▶</button>
-        </div>
-      </div>
-    </div>`;
+    return '<div class="doc-item" onclick="selectDoc(\'' + d.doc_id + '\')">' +
+      '<span style="font-size:16px;margin-top:2px">' + icon + '</span>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(d.filename) + '</div>' +
+        '<div style="display:flex;align-items:center;gap:8px;margin-top:2px;font-size:10px;color:var(--dim)">' +
+          '<span>' + formatSize(d.size) + '</span>' +
+          (d.sv_id ? '<span style="background:rgba(74,143,232,0.12);color:var(--blue);padding:1px 4px;border-radius:3px">' + d.sv_id + '</span>' : '') +
+          (isPdf ? '<span style="color:var(--red)">PDF</span>' : '') +
+          (isText ? '<span style="color:var(--green)">TXT</span>' : '') +
+        '</div>' +
+        '<div style="font-size:10px;color:var(--dim);margin-top:2px">' + formatDate(d.uploaded_at) + '</div>' +
+      '</div>' +
+      '<button onclick="event.stopPropagation();loadDocToPipeline(\'' + d.doc_id + '\')" style="font-size:10px;background:rgba(74,143,232,0.15);color:var(--blue);padding:2px 6px;border-radius:3px;min-height:24px;opacity:0;transition:opacity .15s" onmouseenter="this.style.opacity=1" onmouseleave="this.style.opacity=0" title="Load into pipeline">\u25B6</button>' +
+    '</div>';
   }).join('');
 
-  // Also populate the dropdown
   allDocs.forEach(d => {
     const opt = document.createElement('option');
     opt.value = d.doc_id;
-    opt.textContent = `${d.filename} (${formatSize(d.size)}) ${d.sv_id ? '· '+d.sv_id : ''}`;
+    opt.textContent = d.filename + ' (' + formatSize(d.size) + ')' + (d.sv_id ? ' \u00b7 ' + d.sv_id : '');
     sel.appendChild(opt);
   });
 }
@@ -399,49 +576,40 @@ async function selectDoc(docId) {
   const content = document.getElementById('viewer-content');
 
   title.textContent = viewedDoc.filename;
-  viewer.classList.remove('hidden');
+  viewer.classList.add('open');
 
   const isPdf = (viewedDoc.type||'').includes('pdf');
   const isImage = (viewedDoc.type||'').includes('image');
   const isText = (viewedDoc.type||'').includes('text');
 
   if (isPdf) {
-    content.innerHTML = `
-      <div class="text-xs text-gray-400 mb-2">PDF · ${formatSize(viewedDoc.size)}</div>
-      <object data="${API}/doc/${docId}" type="application/pdf" class="w-full rounded" style="height:250px">
-        <div class="text-xs text-gray-500 p-4 bg-black/40 rounded">
-          PDF preview unavailable.
-          <a href="${API}/doc/${docId}" target="_blank" class="text-blue-400 underline">Open in new tab</a>
-        </div>
-      </object>
-      <button onclick="loadDocToPipeline('${docId}')" class="mt-2 w-full text-xs bg-blue-900/40 text-blue-300 py-2 rounded hover:bg-blue-900/60">
-        Load into Pipeline ▶
-      </button>`;
+    content.innerHTML =
+      '<div style="font-size:12px;color:var(--dim);margin-bottom:8px">PDF \u00b7 ' + formatSize(viewedDoc.size) + '</div>' +
+      '<object data="' + API + '/doc/' + docId + '" type="application/pdf" style="width:100%;height:250px;border-radius:8px">' +
+        '<div style="font-size:12px;color:var(--dim);padding:16px;background:rgba(0,0,0,.4);border-radius:8px">PDF preview unavailable. <a href="' + API + '/doc/' + docId + '" target="_blank" style="color:var(--blue)">Open in new tab</a></div>' +
+      '</object>' +
+      '<button onclick="loadDocToPipeline(\'' + docId + '\')" style="margin-top:8px;width:100%;font-size:12px;background:rgba(74,143,232,0.15);color:var(--blue);padding:8px;border-radius:6px">Load into Pipeline \u25B6</button>';
   } else if (isImage) {
-    content.innerHTML = `
-      <img src="${API}/doc/${docId}" class="w-full rounded" style="max-height:250px;object-fit:contain"/>
-      <button onclick="loadDocToPipeline('${docId}')" class="mt-2 w-full text-xs bg-blue-900/40 text-blue-300 py-2 rounded hover:bg-blue-900/60">
-        Load into Pipeline ▶
-      </button>`;
+    content.innerHTML =
+      '<img src="' + API + '/doc/' + docId + '" style="width:100%;border-radius:8px;max-height:250px;object-fit:contain"/>' +
+      '<button onclick="loadDocToPipeline(\'' + docId + '\')" style="margin-top:8px;width:100%;font-size:12px;background:rgba(74,143,232,0.15);color:var(--blue);padding:8px;border-radius:6px">Load into Pipeline \u25B6</button>';
   } else if (isText) {
     try {
       const r = await fetch(API + '/doc/' + docId);
       const text = await r.text();
-      content.innerHTML = `
-        <pre class="text-[11px] text-gray-300 bg-black/40 p-2 rounded max-h-[200px] overflow-auto whitespace-pre-wrap">${escHtml(text.slice(0, 3000))}${text.length > 3000 ? '\n\n[...truncated]' : ''}</pre>
-        <button onclick="loadDocToPipeline('${docId}')" class="mt-2 w-full text-xs bg-blue-900/40 text-blue-300 py-2 rounded hover:bg-blue-900/60">
-          Load into Pipeline ▶
-        </button>`;
-    } catch(e) { content.innerHTML = '<div class="text-xs text-red-400">Failed to load</div>'; }
+      content.innerHTML =
+        '<pre style="font-size:11px;color:var(--mid);background:rgba(0,0,0,.4);padding:8px;border-radius:8px;max-height:200px;overflow:auto;white-space:pre-wrap">' + escHtml(text.slice(0, 3000)) + (text.length > 3000 ? '\n\n[...truncated]' : '') + '</pre>' +
+        '<button onclick="loadDocToPipeline(\'' + docId + '\')" style="margin-top:8px;width:100%;font-size:12px;background:rgba(74,143,232,0.15);color:var(--blue);padding:8px;border-radius:6px">Load into Pipeline \u25B6</button>';
+    } catch(e) { content.innerHTML = '<div style="font-size:12px;color:var(--red)">Failed to load</div>'; }
   } else {
-    content.innerHTML = `
-      <div class="text-xs text-gray-500 p-2">Unknown type: ${viewedDoc.type}</div>
-      <a href="${API}/doc/${docId}" target="_blank" class="text-xs text-blue-400 underline">Download</a>`;
+    content.innerHTML =
+      '<div style="font-size:12px;color:var(--dim);padding:8px">Unknown type: ' + viewedDoc.type + '</div>' +
+      '<a href="' + API + '/doc/' + docId + '" target="_blank" style="font-size:12px;color:var(--blue)">Download</a>';
   }
 }
 
 function closeViewer() {
-  document.getElementById('doc-viewer').classList.add('hidden');
+  document.getElementById('doc-viewer').classList.remove('open');
   viewedDoc = null;
 }
 
@@ -472,7 +640,7 @@ async function loadDocToPipeline(docId) {
       document.getElementById('doc-text').value = await resp.text();
       toast('Loaded into pipeline');
     } else {
-      toast('Binary file — use Analyze button instead');
+      toast('Binary file \u2014 use Analyze button instead');
     }
   } catch(e) { toast('Failed: ' + e.message); }
 }
@@ -481,7 +649,7 @@ document.getElementById('doc-select').onchange = function() {
   if (this.value) loadDocToPipeline(this.value);
 };
 
-// ── File upload ──
+// ── File upload (proper FormData POST) ──
 async function handleFile(input) {
   const file = input.files[0];
   if (!file) return;
@@ -498,9 +666,10 @@ async function handleFileUpload(input) {
   fd.append('file', file);
   try {
     const r = await fetch(API + '/doc/upload', {method:'POST', body:fd});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
     const d = await r.json();
     toast('Uploaded: ' + (d.filename || file.name));
-    loadDocs(); // refresh library
+    loadDocs();
   } catch(e) { toast('Upload failed: ' + e.message); }
 }
 
@@ -511,11 +680,11 @@ async function checkHealth() {
     const d = await r.json();
     const keys = [d.anthropic && 'Anthropic', d.gemini && 'Gemini', d.openrouter && 'OpenRouter'].filter(Boolean);
     document.getElementById('health-status').innerHTML =
-      `<div class="text-green-500">● Online</div>` +
-      `<div class="text-gray-500 mt-1">Keys: ${keys.join(', ') || 'none'}</div>` +
-      `<div class="text-gray-500">Sheet: ${d.sheet_state}</div>`;
+      '<span class="health-dot" style="background:var(--green)"></span> Online' +
+      '<div style="color:var(--dim);margin-top:4px">Keys: ' + (keys.join(', ') || 'none') + '</div>' +
+      '<div style="color:var(--dim)">Sheet: ' + d.sheet_state + '</div>';
   } catch(e) {
-    document.getElementById('health-status').innerHTML = '<div class="text-red-500">● Offline</div>';
+    document.getElementById('health-status').innerHTML = '<span class="health-dot" style="background:var(--red)"></span> Offline';
   }
 }
 
@@ -530,15 +699,65 @@ async function loadAgents() {
   } catch(e) { console.log('agents endpoint unavailable, using fallback'); }
 }
 
+// ── Run reconnect: check for incomplete runs on load ──
+async function checkForActiveRuns() {
+  try {
+    const r = await fetch(API + '/pipeline/runs');
+    const d = await r.json();
+    const runs = d.runs || [];
+    const incomplete = runs.find(run => run.status === 'running' || run.status === 'paused_at_gate');
+    if (incomplete) {
+      resumeRunId = incomplete.run_id;
+      document.getElementById('resume-text').textContent = 'Active run found: ' + incomplete.run_id + ' \u2014 Resume?';
+      document.getElementById('resume-banner').classList.add('visible');
+    }
+  } catch(e) { /* no active runs endpoint or no runs */ }
+}
+
+async function resumeRun() {
+  if (!resumeRunId) return;
+  runId = resumeRunId;
+  runState = 'pending';
+  document.getElementById('resume-banner').classList.remove('visible');
+  toast('Resuming run: ' + runId);
+  // Try to get current state
+  try {
+    const r = await fetch(API + '/pipeline/' + runId + '/status');
+    const d = await r.json();
+    if (d.completed_steps) {
+      completedSteps = d.completed_steps;
+      completedSteps.forEach((_, i) => setCardState(i, 'done'));
+    }
+    if (d.status === 'paused_at_gate') {
+      runState = 'paused_at_gate';
+      const gateIdx = completedSteps.length;
+      setCardState(gateIdx, 'gate');
+      document.getElementById('approve').style.display = '';
+    } else {
+      await runStep();
+    }
+    updateSys();
+  } catch(e) {
+    // Just try to advance
+    await runStep();
+  }
+}
+
+function dismissResume() {
+  resumeRunId = null;
+  document.getElementById('resume-banner').classList.remove('visible');
+}
+
 // ── Init ──
 loadAgents();
 checkHealth();
 loadDocs();
+checkForActiveRuns();
 
 // Pre-fill with sample Hebrew legal text
 if (!document.getElementById('doc-text').value) {
   document.getElementById('doc-text').value =
-    'בבית המשפט המחוזי בירושלים\nע"ר 58022-09-25\n\nהעותר: פרופ\' אברהם ארליך\nנגד\nהמשיבה: עיריית ירושלים\n\nהחלטה\n\nלאחר עיון בטענות הצדדים, ובשים לב לכך שהערעור הוגש באיחור ניכר של כ-50 יום לאחר המועד הסטטוטורי, ולא הוצגו טעמים מיוחדים כנדרש:\n\n1. הערעור נמחק.\n2. המבקש יישא בהוצאות המשיבה בסך 2,500 ₪.\n\nניתנה היום, 18.02.2026\nכב\' השופט ערן שילה';
+    '\u05D1\u05D1\u05D9\u05EA \u05D4\u05DE\u05E9\u05E4\u05D8 \u05D4\u05DE\u05D7\u05D5\u05D6\u05D9 \u05D1\u05D9\u05E8\u05D5\u05E9\u05DC\u05D9\u05DD\n\u05E2"\u05E8 58022-09-25\n\n\u05D4\u05E2\u05D5\u05EA\u05E8: \u05E4\u05E8\u05D5\u05E4\' \u05D0\u05D1\u05E8\u05D4\u05DD \u05D0\u05E8\u05DC\u05D9\u05DA\n\u05E0\u05D2\u05D3\n\u05D4\u05DE\u05E9\u05D9\u05D1\u05D4: \u05E2\u05D9\u05E8\u05D9\u05D9\u05EA \u05D9\u05E8\u05D5\u05E9\u05DC\u05D9\u05DD\n\n\u05D4\u05D7\u05DC\u05D8\u05D4\n\n\u05DC\u05D0\u05D7\u05E8 \u05E2\u05D9\u05D5\u05DF \u05D1\u05D8\u05E2\u05E0\u05D5\u05EA \u05D4\u05E6\u05D3\u05D3\u05D9\u05DD, \u05D5\u05D1\u05E9\u05D9\u05DD \u05DC\u05D1 \u05DC\u05DB\u05DA \u05E9\u05D4\u05E2\u05E8\u05E2\u05D5\u05E8 \u05D4\u05D5\u05D2\u05E9 \u05D1\u05D0\u05D9\u05D7\u05D5\u05E8 \u05E0\u05D9\u05DB\u05E8 \u05E9\u05DC \u05DB-50 \u05D9\u05D5\u05DD \u05DC\u05D0\u05D7\u05E8 \u05D4\u05DE\u05D5\u05E2\u05D3 \u05D4\u05E1\u05D8\u05D8\u05D5\u05D8\u05D5\u05E8\u05D9, \u05D5\u05DC\u05D0 \u05D4\u05D5\u05E6\u05D2\u05D5 \u05D8\u05E2\u05DE\u05D9\u05DD \u05DE\u05D9\u05D5\u05D7\u05D3\u05D9\u05DD \u05DB\u05E0\u05D3\u05E8\u05E9:\n\n1. \u05D4\u05E2\u05E8\u05E2\u05D5\u05E8 \u05E0\u05DE\u05D7\u05E7.\n2. \u05D4\u05DE\u05D1\u05E7\u05E9 \u05D9\u05D9\u05E9\u05D0 \u05D1\u05D4\u05D5\u05E6\u05D0\u05D5\u05EA \u05D4\u05DE\u05E9\u05D9\u05D1\u05D4 \u05D1\u05E1\u05DA 2,500 \u20AA.\n\n\u05E0\u05D9\u05EA\u05E0\u05D4 \u05D4\u05D9\u05D5\u05DD, 18.02.2026\n\u05DB\u05D1\' \u05D4\u05E9\u05D5\u05E4\u05D8 \u05E2\u05E8\u05DF \u05E9\u05D9\u05DC\u05D4';
 }
 </script>
 </body>
