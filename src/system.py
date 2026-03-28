@@ -867,6 +867,7 @@ class Handler(BaseHTTPRequestHandler):
             "/doc/upload": self.h_doc_upload,
             "/doc/from-url": self.h_doc_from_url,
             "/drive/import": self.h_drive_import,
+            "/pipeline/batch": self.h_pipeline_batch,
         }
         if path in routes:
             routes[path]()
@@ -1330,6 +1331,96 @@ class Handler(BaseHTTPRequestHandler):
                     "gemini_quota" if GEMINI_API_KEY else None,
                 ] if g
             ],
+        })
+
+    # ── BATCH PIPELINE PROCESSING ────────────────────
+    def h_pipeline_batch(self):
+        """Process sheet rows through the 12-agent pipeline.
+        Body: {max_rows?, start_from?, agents?: [1,2,3], dry_run?}
+        Each row with text content gets a pipeline run started.
+        Runs agents sequentially, auto-approving gates."""
+        body = self.read_body()
+        max_rows = int(body.get("max_rows", 3))
+        start_from = int(body.get("start_from", 0))
+        agent_steps = body.get("agents", None)  # e.g. [1,2,3] to run only first 3 agents
+        dry_run = body.get("dry_run", False)
+
+        if SHEET.state != "ready":
+            self.send_err("Sheet not ready", 503); return
+
+        # Get rows with text content, deduplicate by sv_id
+        seen = set()
+        candidates = []
+        for r in SHEET.snapshot["valid"]:
+            row = r["row"]
+            sv_id = row.get("sv_id", "")
+            text = row.get("clean_text") or row.get("full_text") or row.get("summary") or ""
+            if not text.strip() or sv_id in seen:
+                continue
+            seen.add(sv_id)
+            candidates.append({
+                "sv_id": sv_id,
+                "source": row.get("source", ""),
+                "document_type": row.get("document_type", ""),
+                "text_length": len(text),
+                "drive_link": row.get("drive_link", ""),
+                "text_preview": text[:200],
+                "_full_text": text,
+            })
+
+        batch = candidates[start_from:start_from + max_rows]
+
+        if dry_run:
+            self.send_json({
+                "dry_run": True,
+                "total_candidates": len(candidates),
+                "batch_size": len(batch),
+                "start_from": start_from,
+                "candidates": [{k: v for k, v in c.items() if k != "_full_text"} for c in batch],
+            })
+            return
+
+        # Process each candidate
+        import threading
+        results = []
+
+        def process_row(candidate):
+            text = candidate["_full_text"]
+            run = PIPELINE.start_run(text)
+            run_id = run["run_id"]
+            max_step = max(agent_steps) if agent_steps else len(PIPELINE_AGENTS)
+
+            for step_idx in range(min(max_step, len(PIPELINE_AGENTS))):
+                if agent_steps and (step_idx + 1) not in agent_steps:
+                    continue
+                # Auto-approve gates for batch processing
+                if run.get("status") == "paused_at_gate":
+                    PIPELINE.approve_gate(run_id)
+                result = PIPELINE.run_step(run_id)
+                if "error" in result and result["error"] != "awaiting human approval":
+                    break
+                # Auto-approve if next step is a gate
+                if run.get("status") == "paused_at_gate":
+                    PIPELINE.approve_gate(run_id)
+
+            return {
+                "sv_id": candidate["sv_id"],
+                "run_id": run_id,
+                "steps_completed": len(run.get("steps_completed", [])),
+                "status": run.get("status"),
+            }
+
+        # Run batch sequentially (LLM calls are the bottleneck, not CPU)
+        for c in batch:
+            print(f"  batch: processing {c['sv_id']} ({c['text_length']} chars)")
+            r = process_row(c)
+            results.append(r)
+            print(f"  batch: {c['sv_id']} → {r['status']} ({r['steps_completed']} steps)")
+
+        self.send_json({
+            "processed": len(results),
+            "total_candidates": len(candidates),
+            "results": results,
         })
 
 # ══════════════════════════════════════════════════════
